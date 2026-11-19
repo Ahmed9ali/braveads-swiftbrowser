@@ -9,7 +9,8 @@ const val SHIELDS_JS = """
   try {
     var HN = (location.hostname || '').toLowerCase();
     if (/(^|\.)(challenges\.cloudflare\.com|hcaptcha\.com|recaptcha\.net|turnstile\.com)${'$'}/.test(HN) ||
-        (HN === 'www.google.com' && location.pathname.indexOf('/recaptcha') === 0)) return;
+        (HN === 'www.google.com' && location.pathname.indexOf('/recaptcha') === 0) ||
+        (location.pathname || '').indexOf('/cdn-cgi/challenge-platform') >= 0) return;
   } catch (e) {}
   if (window.__swiftShields) return;
   window.__swiftShields = true;
@@ -746,9 +747,9 @@ const val SHIELDS_JS = """
   // their own server cannot be skipped from the browser.
   (function () {
     if (!TOP || IS_YT) return;
-    var FLOW = /(click\s+(on\s+)?(any|an|the|one)\b[^.]{0,25}\b(images?|ads?|banners?)|then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|get\s+link\b|generate\s+link|your\s+link\s+is\s+(ready|being)|(click|tap)\s+(here\s+)?to\s+continue\s+(to\s+)?(link|download)|scroll\s+down\s+(to\s+)?(continue|get))/i;
-    var STRONGFLOW = /(then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|get\s+link\b|generate\s+link|your\s+link\s+is\s+(ready|being)|click\s+(on\s+)?(any|an|the)\b[^.]{0,25}\b(images?|ads?|banners?)\b[^.]{0,40}\b(link|continue|wait|back))/i;
-    var SHORTENERS = /(^|\.)(ouo\.io|ouo\.press|adf\.ly|linkvertise\.com|shrinkme\.io|shrinkearn\.com|exe\.io|exey\.io|fc\.lc|cuty\.io|droplink\.co|gplinks\.co|gplinks\.in|shareus\.io|tpi\.li|tnlink\.in|linkshortify\.com|shrtfly\.com|ez4short\.com|arolinks\.com|urlspay\.in|kingurl\.in|indianshortner\.com|clk\.sh|clicksfly\.com|adrinolinks\.in|bc\.vc|shorte\.st|za\.gl|cpmlink\.net|link1s\.com|xpshort\.com|linksly\.co|lksfy\.com|shortingly\.in|vplink\.in|krownlinks\.me|adshrink\.it|ouo\.today|short2url\.in|mdiskshortner\.link|earnow\.online|urlsfly\.com|shrinke\.me|linkpays\.in|tglink\.in)${'$'}/i;
+    var FLOW = /(click\s+(on\s+)?(any|an|the|one)\b[^.]{0,25}\b(images?|ads?|banners?)|then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|please\s+wait|wait\s+\d+\s*(s|sec|secs|seconds?)\b|get\s+(your\s+)?(the\s+)?(download\s+)?link\b|generate\s+link|your\s+(download\s+)?link\s+is\s+(ready|being)|(click|tap)\s+(here\s+)?to\s+(continue|get\s+link)|click\s+(on\s+)?(the\s+)?(button|link)\s+below\s+to\s+(continue|get|download)|continue\s+to\s+(the\s+)?(next|link|download)|scroll\s+down\s+(to\s+)?(continue|get))/i;
+    var STRONGFLOW = /(then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|please\s+wait|wait\s+\d+\s*(s|sec|secs|seconds?)\b|get\s+(your\s+)?(the\s+)?(download\s+)?link\b|generate\s+link|your\s+(download\s+)?link\s+is\s+(ready|being)|click\s+(on\s+)?(any|an|the)\b[^.]{0,25}\b(images?|ads?|banners?)\b[^.]{0,40}\b(link|continue|wait|back)|click\s+(here|below)\s+to\s+(continue|get\s+link)|click\s+(on\s+)?(the\s+)?(button|link)\s+below\s+to\s+(continue|get|download)|continue\s+to\s+(the\s+)?(next|link|download))/i;
+    var SHORTENERS = /(^|\.)(ouo\.io|ouo\.press|ouo\.today|adf\.ly|linkvertise\.com|linkvertise\.net|link-to\.net|shrinkme\.io|shrinkme\.ink|shrinkearn\.com|exe\.io|exey\.io|fc\.lc|cuty\.io|droplink\.co|droplinks\.in|gplinks\.co|gplinks\.in|gplinks\.com|shareus\.io|tpi\.li|store\.tpi\.li|tnlink\.in|linkshortify\.com|shrtfly\.com|ez4short\.com|arolinks\.com|urlspay\.in|kingurl\.in|indianshortner\.com|clk\.sh|clicksfly\.com|adrinolinks\.in|bc\.vc|shorte\.st|za\.gl|cpmlink\.net|link1s\.com|xpshort\.com|linksly\.co|lksfy\.com|shortingly\.in|vplink\.in|krownlinks\.me|adshrink\.it|short2url\.in|mdiskshortner\.link|earnow\.online|urlsfly\.com|shrinke\.me|linkpays\.in|tglink\.in|try2link\.com|urlsopen\.com|megaurl\.in|megaurl\.com|clickscoin\.com|oko\.sh|work\.ink|workink\.net|loot-link\.com|loot-links\.com|lootlink\.com|lootlinks\.com|rekonise\.com|sub2unlock\.com|sub2unlock\.net|sub2unlock\.io|social-unlock\.com|boost\.ink|mboost\.me|paster\.so|paster\.gg|bstlar\.com|bstlar\.gg|lockr\.so|lockr\.one|spdmteam\.com|socialwolvez\.com|youtubeunblock\.com|unlocknow\.net|unlockit\.click)${'$'}/i;
     var SPEED = 25, active = false, t0real = 0, t0warp = 0;
 
     // ---- clock + timers: recorded from page start, only sped up once the page is known to be a link gate ----
@@ -813,11 +814,19 @@ const val SHIELDS_JS = """
     }
 
     // ---- buttons that the countdown would unlock ----
-    var WANT = /^(get\s*(the\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|download(\s+now)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
-    var HIDEOK = /^(get\s*(the\s+)?(download\s+)?link|continue|next|download|proceed|go\s+to\s+link|open\s+link)/i;
+    var WANT = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|download(\s+now)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
+    var HIDEOK = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue|next|download|proceed|go\s+to\s+link|open\s+link)/i;
+    var NEXT = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
+    var AUTOFLOW = /(click\s+(on\s+)?(any|an|the)\b[^.]{0,25}\b(images?|ads?|banners?)|then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|get\s+(your\s+)?(the\s+)?(download\s+)?link\b|your\s+(download\s+)?link\s+is\s+(ready|being)|click\s+(on\s+)?(the\s+)?(button|link)\s+below\s+to\s+(continue|get|download))/i;
+    var autoClicked = 0;
+    function press(e) {
+      try { e.click(); } catch (x) {
+        try { e.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); } catch (y) {}
+      }
+    }
     function reveal() {
       try {
-        var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button]');
+        var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],[onclick]');
         for (var i = 0; i < els.length && i < 400; i++) {
           var e = els[i], txt = ((e.innerText || e.value || '') + '').trim();
           if (!txt || txt.length > 40 || !WANT.test(txt)) continue;
@@ -834,11 +843,18 @@ const val SHIELDS_JS = """
               n = n.parentElement;
             }
           }
+          var box = null;
+          try { box = e.getBoundingClientRect(); } catch (x) {}
+          if (autoOk && box && box.width > 1 && box.height > 1 && !e.__swiftClicked && autoClicked < 8 && NEXT.test(txt)) {
+            e.__swiftClicked = true;
+            autoClicked++;
+            rST.call(window, (function (b) { return function () { press(b); }; })(e), 900);
+          }
         }
       } catch (e) {}
     }
 
-    var sent = 0, gated = false, revealUntil = 0;
+    var sent = 0, gated = false, autoOk = false, revealUntil = 0;
     function look() {
       if (sent > 12) return;
       try {
@@ -846,11 +862,17 @@ const val SHIELDS_JS = """
         if (!b) return;
         var t = (b.innerText || '').slice(0, 4000);
         var short = SHORTENERS.test(H);
-        if (FLOW.test(t) || short) { sent++; if (NAV && NAV.flow) NAV.flow(); }
-        if (!gated && (STRONGFLOW.test(t) || short)) { gated = true; speedUp(); revealUntil = Date.now() + 90000 * SPEED; }
+        var flow = FLOW.test(t);
+        if (flow || short) { sent++; if (NAV && NAV.flow) NAV.flow(); }
+        if (!gated && (short || (flow && STRONGFLOW.test(t)))) {
+          gated = true;
+          autoOk = short || AUTOFLOW.test(t);
+          speedUp();
+          revealUntil = Date.now() + 90000 * SPEED;
+        }
       } catch (e) {}
     }
-    [300, 900, 2500, 6000, 12000, 25000].forEach(function (ms) { rST.call(window, look, ms); });
+    [300, 900, 2500, 6000, 12000, 25000, 40000].forEach(function (ms) { rST.call(window, look, ms); });
     try { document.addEventListener('DOMContentLoaded', function () { rST.call(window, look, 50); }); } catch (e) {}
     rSI.call(window, function () { if (gated && Date.now() < revealUntil) reveal(); }, 600);
   })();
@@ -859,7 +881,7 @@ const val SHIELDS_JS = """
 """
 
 /** Prefix for document-start scripts that must not run inside captcha / bot-check frames. */
-const val CAPTCHA_GUARD = "if(/(^|\\.)(challenges\\.cloudflare\\.com|hcaptcha\\.com|recaptcha\\.net)$/.test(location.hostname)||(location.hostname==='www.google.com'&&location.pathname.indexOf('/recaptcha')===0))return;"
+const val CAPTCHA_GUARD = "if(/(^|\\.)(challenges\\.cloudflare\\.com|hcaptcha\\.com|recaptcha\\.net)${'$'}/.test(location.hostname)||(location.hostname==='www.google.com'&&location.pathname.indexOf('/recaptcha')===0)||(location.pathname||'').indexOf('/cdn-cgi/challenge-platform')>=0)return;"
 
 /** Makes the WebView look like Chrome to bot checks: a real Chrome has window.chrome, a WebView does not. */
 const val COMPAT_JS = """

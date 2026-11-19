@@ -93,6 +93,7 @@ class NavigationGuard(
 
         if (t.allowOnce.remove(key(url))) return Verdict(Kind.ALLOW, "allowed by user")
         if (isTrusted(h)) return Verdict(Kind.ALLOW, "trusted host")
+        if (isShortener(h)) return Verdict(Kind.ALLOW, "shortlink host")
 
         val pageHost = pageUrl?.let { host(it) }
         if (pageHost != null && sameSite(h, pageHost)) {
@@ -216,6 +217,34 @@ class NavigationGuard(
         const val CONTROL_WINDOW_MS = 8000L
         const val FLOW_MS = 300_000L
         const val FLOW_TAP_MS = 4000L
+
+        /** Ad-gate link shorteners: their next-step pages must keep working even if a filter list lists them. */
+        private val SHORTENER_HOSTS = setOf(
+            "ouo.io", "ouo.press", "ouo.today", "adf.ly", "linkvertise.com", "linkvertise.net", "link-to.net",
+            "shrinkme.io", "shrinkme.ink", "shrinkearn.com", "exe.io", "exey.io", "fc.lc", "cuty.io",
+            "droplink.co", "droplinks.in", "gplinks.co", "gplinks.in", "gplinks.com", "shareus.io",
+            "tpi.li", "store.tpi.li", "tnlink.in", "linkshortify.com", "shrtfly.com", "ez4short.com",
+            "arolinks.com", "urlspay.in", "kingurl.in", "indianshortner.com", "clk.sh", "clicksfly.com",
+            "adrinolinks.in", "bc.vc", "shorte.st", "za.gl", "cpmlink.net", "link1s.com", "xpshort.com",
+            "linksly.co", "lksfy.com", "shortingly.in", "vplink.in", "krownlinks.me", "adshrink.it",
+            "short2url.in", "mdiskshortner.link", "earnow.online", "urlsfly.com", "shrinke.me",
+            "linkpays.in", "tglink.in", "try2link.com", "urlsopen.com", "megaurl.in", "megaurl.com",
+            "clickscoin.com", "oko.sh", "work.ink", "workink.net", "loot-link.com", "loot-links.com",
+            "lootlink.com", "lootlinks.com", "rekonise.com", "sub2unlock.com", "sub2unlock.net",
+            "sub2unlock.io", "social-unlock.com", "boost.ink", "mboost.me", "paster.so", "paster.gg",
+            "bstlar.com", "bstlar.gg", "lockr.so", "lockr.one", "spdmteam.com", "socialwolvez.com",
+            "youtubeunblock.com", "unlocknow.net", "unlockit.click"
+        )
+
+        fun isShortener(h: String?): Boolean {
+            var x = h?.lowercase(Locale.ROOT) ?: return false
+            while (true) {
+                if (x in SHORTENER_HOSTS) return true
+                val dot = x.indexOf('.')
+                if (dot < 0) return false
+                x = x.substring(dot + 1)
+            }
+        }
 
         private val CHEAP_TLDS = setOf(
             "xyz", "top", "click", "site", "online", "icu", "buzz", "monster", "fun", "cyou", "sbs", "cfd",

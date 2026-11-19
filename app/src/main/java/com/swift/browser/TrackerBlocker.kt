@@ -55,6 +55,7 @@ class TrackerBlocker(context: Context) {
 
     fun isAdHost(host: String?): Boolean {
         var h = host?.lowercase(Locale.ROOT) ?: return false
+        if (NavigationGuard.isShortener(h)) return false
         if (h in hardcodedSpamHosts) return true
         while (true) {
             if (h in blockedHosts) return true
@@ -68,17 +69,30 @@ class TrackerBlocker(context: Context) {
     fun isAdUrl(url: String?): Boolean = isAdHost(hostOf(url))
 
     fun hasAdParams(url: String): Boolean {
+        if (NavigationGuard.isShortener(hostOf(url))) return false
         val lower = url.lowercase(Locale.ROOT)
         return redirectParts.any { lower.contains(it) }
     }
 
     private fun sameSite(a: String, b: String) = a == b || a.endsWith(".$b") || b.endsWith(".$a")
 
+    /** Captcha / bot-check URLs must never be touched, including first-party Cloudflare challenge assets. */
+    private fun isBotCheck(url: String, host: String?): Boolean {
+        val path = runCatching { Uri.parse(url).path?.lowercase(Locale.ROOT) ?: "" }.getOrDefault("")
+        if (path.contains("/cdn-cgi/challenge-platform") || path.contains("/turnstile/")) return true
+        val h = host?.lowercase(Locale.ROOT) ?: return false
+        if (h == "challenges.cloudflare.com" || h.endsWith(".challenges.cloudflare.com")) return true
+        if (h == "hcaptcha.com" || h.endsWith(".hcaptcha.com") || h == "recaptcha.net" || h.endsWith(".recaptcha.net")) return true
+        if ((h == "google.com" || h.endsWith(".google.com")) && path.contains("recaptcha")) return true
+        if ((h == "cloudflare.com" || h.endsWith(".cloudflare.com")) && path.contains("/cdn-cgi/")) return true
+        return false
+    }
+
     fun isSpamRedirect(url: String, pageUrl: String?, hasGesture: Boolean): Boolean {
         if (hasGesture) return false // Let user-intended clicks through
         val host = hostOf(url) ?: return false
         val pageHost = hostOf(pageUrl) ?: return false
-        if (sameSite(host, pageHost)) return false
+        if (sameSite(host, pageHost) || NavigationGuard.isShortener(host)) return false
         
         // Block if it goes to a known spam host or has spam parameters
         if (isAdHost(host)) return true
@@ -92,6 +106,8 @@ class TrackerBlocker(context: Context) {
         if (isExemptPage(pageHost) || isExemptPage(requestHost)) return false
         if (isPaymentHost(requestHost) || isPaymentHost(pageHost) || isSensitivePage(pageUrl)) return false
         if (isCheckoutPage(pageUrl) && !isAdHost(requestHost)) return false
+        if (isBotCheck(requestUrl, requestHost) || isBotCheck(pageUrl ?: "", pageHost)) return false
+        if (NavigationGuard.isShortener(requestHost)) return false
 
         // 1. CRITICAL WHITELIST: Never block these or the web breaks.
         if (requestHost.endsWith("google.com") && requestUrl.contains("recaptcha")) return false
@@ -126,7 +142,8 @@ class TrackerBlocker(context: Context) {
     }
 
     private fun engineWhitelisted(host: String, url: String): Boolean =
-        (host.endsWith("google.com") && url.contains("recaptcha")) || host == "challenges.cloudflare.com" ||
+        isBotCheck(url, host) || NavigationGuard.isShortener(host) ||
+            (host.endsWith("google.com") && url.contains("recaptcha")) || host == "challenges.cloudflare.com" ||
             host.endsWith("hcaptcha.com") || host.endsWith("jsdelivr.net") || (host.endsWith("googleapis.com") && !host.startsWith("imasdk.")) ||
             host.endsWith("gstatic.com") || host.endsWith("ytimg.com") || host.endsWith("ggpht.com") ||
             host.endsWith("googleusercontent.com")
@@ -194,6 +211,7 @@ class TrackerBlocker(context: Context) {
     fun engineBlocks(url: String, pageUrl: String?, accept: String?): Boolean {
         val e = engine ?: return false
         val host = hostOf(url) ?: return false
+        if (isBotCheck(url, host) || NavigationGuard.isShortener(host)) return false
         val pageHost = hostOf(pageUrl) ?: return false
         if (isExemptPage(pageHost) || isExemptPage(host)) return false
         if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return false
