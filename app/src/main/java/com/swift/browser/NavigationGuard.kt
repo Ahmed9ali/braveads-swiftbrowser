@@ -169,7 +169,14 @@ class NavigationGuard(
         val t0 = now()
         val inFlow = t0 < t.flowUntil
         val tapFresh = t0 - t.tapAt in 0..(if (inFlow) FLOW_TAP_MS else TAP_WINDOW_MS)
-        if (!hasGesture && !tapFresh) return Verdict(Kind.BLOCK, "popup without a tap")
+        if (!hasGesture && !tapFresh) {
+            val safeUrl = url ?: ""
+            val hu = if (safeUrl.isBlank() || safeUrl == "about:blank") null else host(safeUrl)
+            if (inFlow && hu != null && isShortener(hu) && !isAdHost(hu) && !hasAdParams(safeUrl, pageUrl)) {
+                return Verdict(Kind.ALLOW, "shortlink auto step")
+            }
+            return Verdict(Kind.BLOCK, "popup without a tap")
+        }
         if (url == null || url.isBlank() || url == "about:blank") {
             return Verdict(Kind.ALLOW, "popup pending url")
         }

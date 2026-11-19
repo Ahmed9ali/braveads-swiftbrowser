@@ -66,7 +66,11 @@ class TrackerBlocker(context: Context) {
     }
 
     /** JS-side helper: the host lists live here, not in a large map shipped to every page. */
-    fun isAdUrl(url: String?): Boolean = isAdHost(hostOf(url))
+    fun isAdUrl(url: String?): Boolean {
+        val u = url ?: return false
+        val h = hostOf(u)
+        return !isBotCheck(u, h) && isAdHost(h)
+    }
 
     fun hasAdParams(url: String): Boolean {
         if (NavigationGuard.isShortener(hostOf(url))) return false
@@ -237,8 +241,14 @@ class TrackerBlocker(context: Context) {
             NavigationGuard.registrable(host.lowercase(Locale.ROOT)) != "youtube.com"
 
     private fun safeSelectors(list: List<String>): String =
-        list.filter { !it.contains('{') && !it.contains('}') && !it.contains('\n') && it.length < 300 && balanced(it) }
-            .joinToString("\n")
+        list.filter {
+            val l = it.lowercase(Locale.ROOT)
+            !it.contains('{') && !it.contains('}') && !it.contains('\n') && it.length < 300 && balanced(it) &&
+                !l.contains("cf-challenge") && !l.contains("__cf_challenge") &&
+                !l.contains("cf-turnstile") && !l.contains("turnstile") &&
+                !l.contains("challenge-form") && !l.contains("challenge-stage") &&
+                !l.contains("challenge-running") && !l.contains("cf-browser-verification")
+        }.joinToString("\n")
 
     /** Site-specific rules + the few generic rules that cannot be indexed; sent once at document start. */
     fun cosmeticStartup(host: String): String {

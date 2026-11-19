@@ -77,12 +77,24 @@ const val SHIELDS_JS = """
   try { if (/(^|[\/?&=_.-])(checkout|payment|payments|pay|billing|cart|order|orders|upi|transaction|wallet|purchase)([\/?&=_.#-]|${'$'})/i.test(location.pathname + '?' + location.search)) EXEMPT = true; } catch (e) {}
   // Brave's ad/tracker host lists live in the native engine. Ask it instead of shipping a huge host map to every page.
   var AD_CACHE = Object.create(null);
+  function endsIn(h, s) { return h === s || h.slice(-(s.length + 1)) === '.' + s; }
+  function botCheckUrl(u) {
+    try {
+      var x = new URL(String(u), location.href);
+      var h = x.hostname.toLowerCase(), p = x.pathname.toLowerCase();
+      if (p.indexOf('/cdn-cgi/challenge-platform') >= 0 || p.indexOf('/turnstile/') >= 0) return true;
+      if (endsIn(h, 'challenges.cloudflare.com') || endsIn(h, 'hcaptcha.com') || endsIn(h, 'recaptcha.net')) return true;
+      if (endsIn(h, 'google.com') && p.indexOf('/recaptcha') >= 0) return true;
+      if (endsIn(h, 'cloudflare.com') && p.indexOf('/cdn-cgi/') >= 0) return true;
+    } catch (e) {}
+    return false;
+  }
   function adHostUrl(u) {
     if (EXEMPT || sensitive()) return false;
     try {
       var s = new URL(String(u), location.href).href;
       var h = new URL(s).hostname.toLowerCase();
-      if (!h) return false;
+      if (!h || botCheckUrl(s)) return false;
       if (h in AD_CACHE) return AD_CACHE[h];
       var r = !!(FILTER && FILTER.isAdHost && FILTER.isAdHost(s));
       AD_CACHE[h] = r;
@@ -530,7 +542,7 @@ const val SHIELDS_JS = """
       try {
         var s = String(u);
         var host = new URL(s, location.href).hostname.toLowerCase();
-        if (!host || SAFE.test(host) || sensitive()) return false;
+        if (!host || botCheckUrl(s) || SAFE.test(host) || sensitive()) return false;
         return adHostUrl(s);
       } catch (e) {}
       return false;
@@ -746,7 +758,7 @@ const val SHIELDS_JS = """
   // NAV.flow() still lets tap-started steps through the navigation guard. Sites that confirm the ad task or the wait on
   // their own server cannot be skipped from the browser.
   (function () {
-    if (!TOP || IS_YT) return;
+    if (!TOP || IS_YT || EXEMPT) return;
     var FLOW = /(click\s+(on\s+)?(any|an|the|one)\b[^.]{0,25}\b(images?|ads?|banners?)|then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|please\s+wait|wait\s+\d+\s*(s|sec|secs|seconds?)\b|get\s+(your\s+)?(the\s+)?(download\s+)?link\b|generate\s+link|your\s+(download\s+)?link\s+is\s+(ready|being)|(click|tap)\s+(here\s+)?to\s+(continue|get\s+link)|click\s+(on\s+)?(the\s+)?(button|link)\s+below\s+to\s+(continue|get|download)|continue\s+to\s+(the\s+)?(next|link|download)|scroll\s+down\s+(to\s+)?(continue|get))/i;
     var STRONGFLOW = /(then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|please\s+wait|wait\s+\d+\s*(s|sec|secs|seconds?)\b|get\s+(your\s+)?(the\s+)?(download\s+)?link\b|generate\s+link|your\s+(download\s+)?link\s+is\s+(ready|being)|click\s+(on\s+)?(any|an|the)\b[^.]{0,25}\b(images?|ads?|banners?)\b[^.]{0,40}\b(link|continue|wait|back)|click\s+(here|below)\s+to\s+(continue|get\s+link)|click\s+(on\s+)?(the\s+)?(button|link)\s+below\s+to\s+(continue|get|download)|continue\s+to\s+(the\s+)?(next|link|download))/i;
     var SHORTENERS = /(^|\.)(ouo\.io|ouo\.press|ouo\.today|adf\.ly|linkvertise\.com|linkvertise\.net|link-to\.net|shrinkme\.io|shrinkme\.ink|shrinkearn\.com|exe\.io|exey\.io|fc\.lc|cuty\.io|droplink\.co|droplinks\.in|gplinks\.co|gplinks\.in|gplinks\.com|shareus\.io|tpi\.li|store\.tpi\.li|tnlink\.in|linkshortify\.com|shrtfly\.com|ez4short\.com|arolinks\.com|urlspay\.in|kingurl\.in|indianshortner\.com|clk\.sh|clicksfly\.com|adrinolinks\.in|bc\.vc|shorte\.st|za\.gl|cpmlink\.net|link1s\.com|xpshort\.com|linksly\.co|lksfy\.com|shortingly\.in|vplink\.in|krownlinks\.me|adshrink\.it|short2url\.in|mdiskshortner\.link|earnow\.online|urlsfly\.com|shrinke\.me|linkpays\.in|tglink\.in|try2link\.com|urlsopen\.com|megaurl\.in|megaurl\.com|clickscoin\.com|oko\.sh|work\.ink|workink\.net|loot-link\.com|loot-links\.com|lootlink\.com|lootlinks\.com|rekonise\.com|sub2unlock\.com|sub2unlock\.net|sub2unlock\.io|social-unlock\.com|boost\.ink|mboost\.me|paster\.so|paster\.gg|bstlar\.com|bstlar\.gg|lockr\.so|lockr\.one|spdmteam\.com|socialwolvez\.com|youtubeunblock\.com|unlocknow\.net|unlockit\.click)${'$'}/i;
@@ -785,6 +797,7 @@ const val SHIELDS_JS = """
         Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return hid; } });
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: function () { return hid ? 'hidden' : 'visible'; } });
         var swap = function (h) {
+          if (challengePage('')) return;
           hid = h;
           try { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event(h ? 'blur' : 'focus')); } catch (x) {}
         };
@@ -812,33 +825,69 @@ const val SHIELDS_JS = """
         } catch (e) {}
       });
     }
+    function undoSpeed() {
+      if (!active) return;
+      active = false;
+      try { Date.now = rNow; } catch (e) {}
+      try { performance.now = rPerf; } catch (e) {}
+      try { window.setInterval = rSI; window.setTimeout = rST; window.clearInterval = rCI; window.clearTimeout = rCT; } catch (e) {}
+      live = {}; alias = {};
+      try { delete document.hidden; delete document.visibilityState; } catch (e) {}
+    }
 
     // ---- buttons that the countdown would unlock ----
-    var WANT = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|download(\s+now)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
-    var HIDEOK = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue|next|download|proceed|go\s+to\s+link|open\s+link)/i;
-    var NEXT = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
+    var WANT = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|download(\s+now)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+(link|content|download)|skip\s+ad|create\s+link|generate\s+link|click\s+to\s+continue|show\s+link|reveal\s+link|view\s+link)\b/i;
+    var HIDEOK = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue|next|download|proceed|go\s+to\s+link|open\s+link|unlock\s+(link|content|download)|skip\s+ad|create\s+link|generate\s+link|click\s+to\s+continue|show\s+link|reveal\s+link|view\s+link|click\s+here)/i;
+    var NEXT = /^(get\s*(the\s+|your\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+(link|content|download)|skip\s+ad|create\s+link|generate\s+link|click\s+to\s+continue|show\s+link|reveal\s+link|view\s+link)\b/i;
     var AUTOFLOW = /(click\s+(on\s+)?(any|an|the)\b[^.]{0,25}\b(images?|ads?|banners?)|then\s+(go\s+)?back\s+and\s+wait|wait\s+for\s+(the\s+)?(link|timer)|get\s+(your\s+)?(the\s+)?(download\s+)?link\b|your\s+(download\s+)?link\s+is\s+(ready|being)|click\s+(on\s+)?(the\s+)?(button|link)\s+below\s+to\s+(continue|get|download))/i;
+    var TIMERFLOW = /(please\s+wait|wait\s+\d+|timer|countdown|verifying)/i;
     var autoClicked = 0;
+    function labelOf(e) {
+      var t = ((e.innerText || e.textContent || e.value || '') + '').trim();
+      if (!t) {
+        try { t = ((e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('alt') || '') + '').trim(); } catch (x) {}
+      }
+      if (!t && e.querySelector) {
+        try { var im = e.querySelector('img[alt]'); if (im) t = (im.alt || '').trim(); } catch (x) {}
+      }
+      return t;
+    }
     function press(e) {
+      try {
+        var a = e.tagName === 'A' ? e : (e.closest ? e.closest('a') : null);
+        if (a && a.target && a.target !== '_self') a.target = '_self';
+        if (NAV && NAV.tap) NAV.tap((a && a.href) || '', true);
+      } catch (x) {}
+      try {
+        ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function (t) {
+          try { e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); } catch (y) {}
+        });
+      } catch (x) {}
       try { e.click(); } catch (x) {
         try { e.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window })); } catch (y) {}
       }
     }
     function reveal() {
       try {
-        var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],[onclick]');
+        var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],[onclick],[data-href],[class*="btn"],[class*="button"],[class*="get-link"],[class*="getlink"],[class*="link-btn"],[class*="next-btn"],[class*="continue"],[id*="btn"],[id*="next"],[id*="continue"],[id*="get-link"],[id*="getlink"]');
         for (var i = 0; i < els.length && i < 400; i++) {
-          var e = els[i], txt = ((e.innerText || e.value || '') + '').trim();
+          var e = els[i], txt = labelOf(e);
           if (!txt || txt.length > 40 || !WANT.test(txt)) continue;
+          var ea = e.closest ? e.closest('a') : null;
+          var href = e.href || (ea && ea.href) || '';
+          var src = e.currentSrc || e.src || '';
+          if ((href && adHostUrl(href)) || (src && adHostUrl(src))) continue;
           if (e.disabled) e.disabled = false;
           e.removeAttribute('disabled');
           if (e.classList) e.classList.remove('disabled');
           if (e.getAttribute('aria-disabled') === 'true') e.setAttribute('aria-disabled', 'false');
           if (HIDEOK.test(txt)) {
             var n = e, k = 0;
-            while (n && n !== document.body && k++ < 4) {
+            while (n && n !== document.body && k++ < 8) {
               var cs = getComputedStyle(n);
               if (cs.display === 'none') n.style.setProperty('display', n.tagName === 'A' || n.tagName === 'BUTTON' ? 'inline-block' : 'block', 'important');
+              if (cs.visibility === 'hidden') n.style.setProperty('visibility', 'visible', 'important');
+              if (parseFloat(cs.opacity) === 0) n.style.setProperty('opacity', '1', 'important');
               if (n.hidden) n.hidden = false;
               n = n.parentElement;
             }
@@ -855,18 +904,32 @@ const val SHIELDS_JS = """
     }
 
     var sent = 0, gated = false, autoOk = false, revealUntil = 0;
+    function challengePage(t) {
+      try {
+        if (location.pathname.indexOf('/cdn-cgi/') >= 0 || window._cf_chl_opt) return true;
+        if (document.querySelector('#cf-challenge-root,#cf-challenge-running,#cf-please-wait,#challenge-form,#challenge-stage,#challenge-running,#__cf_challenge_host__,.cf-browser-verification,iframe[src*="/cdn-cgi/challenge-platform"],script[src*="/cdn-cgi/challenge-platform"]')) return true;
+      } catch (e) {}
+      return /(verifying you are human|checking your browser|just a moment|enable javascript and cookies|ddos protection by cloudflare|cf-chl)/i.test((document.title || '') + ' ' + (t || ''));
+    }
     function look() {
       if (sent > 12) return;
       try {
         var b = document.body;
         if (!b) return;
         var t = (b.innerText || '').slice(0, 4000);
+        if (challengePage(t)) { if (active) undoSpeed(); sent = 99; gated = false; autoOk = false; return; }
+        var timerEl = null, timerLike = false;
+        try {
+          timerEl = document.querySelector('#timer,#countdown,.timer,.countdown,[id*="timer"],[class*="timer"],[id*="countdown"],[class*="countdown"],[id*="wait"],[class*="wait"]');
+          var tt = timerEl ? ((timerEl.innerText || timerEl.textContent || '') + '').trim() : '';
+          timerLike = !!timerEl && /^\s*(\d{1,3}|\d{1,2}:\d{2})\s*(s|sec|secs|seconds?)?\s*${'$'}/i.test(tt);
+        } catch (e) {}
         var short = SHORTENERS.test(H);
-        var flow = FLOW.test(t);
+        var flow = FLOW.test(t) || timerLike;
         if (flow || short) { sent++; if (NAV && NAV.flow) NAV.flow(); }
-        if (!gated && (short || (flow && STRONGFLOW.test(t)))) {
+        if (!gated && (short || (flow && (STRONGFLOW.test(t) || timerLike)))) {
           gated = true;
-          autoOk = short || AUTOFLOW.test(t);
+          autoOk = short || AUTOFLOW.test(t) || TIMERFLOW.test(t) || timerLike;
           speedUp();
           revealUntil = Date.now() + 90000 * SPEED;
         }
@@ -874,7 +937,10 @@ const val SHIELDS_JS = """
     }
     [300, 900, 2500, 6000, 12000, 25000, 40000].forEach(function (ms) { rST.call(window, look, ms); });
     try { document.addEventListener('DOMContentLoaded', function () { rST.call(window, look, 50); }); } catch (e) {}
-    rSI.call(window, function () { if (gated && Date.now() < revealUntil) reveal(); }, 600);
+    rSI.call(window, function () {
+      if (challengePage('')) { if (active) undoSpeed(); gated = false; autoOk = false; return; }
+      if (gated && Date.now() < revealUntil) reveal();
+    }, 600);
   })();
   maskAll();
 })();
