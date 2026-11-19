@@ -67,24 +67,25 @@ const val SHIELDS_JS = """
   var IS_YT = /(^|\.)youtube(-nocookie)?\.com${'$'}/.test(H);
   var NAV = window.SwiftNav;
   var TOP = (window === window.top);
-  var HOSTS = null;
+  var FILTER = window.SwiftFilter;
   var EXEMPT = false;
   var SENS = /(^|[\/._?&=-])(checkout|payments?|pay|order|orders|cart|basket|billing|bank|netbanking|wallet|upi|login|signin|sign-in|auth|oauth|account|secure|3ds|otp|verify|transaction|invoice|subscribe)(${'$'}|[\/._?&=-])/i;
   function sensitive() { try { return SENS.test(location.pathname + location.search) || SENS.test(location.hostname.split('.')[0] + '/'); } catch (e) { return false; } }
-  try { EXEMPT = !!(window.SwiftFilter && window.SwiftFilter.exempt && window.SwiftFilter.exempt(H)); } catch (e) {}
+  try { EXEMPT = !!(FILTER && FILTER.exempt && FILTER.exempt(H)); } catch (e) {}
   // Checkout / payment pages: no page-side blocking at all (orders must not fail because of a blocked script).
   try { if (/(^|[\/?&=_.-])(checkout|payment|payments|pay|billing|cart|order|orders|upi|transaction|wallet|purchase)([\/?&=_.#-]|${'$'})/i.test(location.pathname + '?' + location.search)) EXEMPT = true; } catch (e) {}
-  try { if (!EXEMPT && window.SwiftFilter && window.SwiftFilter.getBlockedHosts) HOSTS = JSON.parse(window.SwiftFilter.getBlockedHosts()); } catch (e) {}
+  // Brave's ad/tracker host lists live in the native engine. Ask it instead of shipping a huge host map to every page.
+  var AD_CACHE = Object.create(null);
   function adHostUrl(u) {
-    if (!HOSTS || sensitive()) return false;
+    if (EXEMPT || sensitive()) return false;
     try {
-      var h = new URL(String(u), location.href).hostname.toLowerCase();
-      while (h) {
-        if (HOSTS[h]) return true;
-        var dot = h.indexOf('.');
-        if (dot < 0) return false;
-        h = h.substring(dot + 1);
-      }
+      var s = new URL(String(u), location.href).href;
+      var h = new URL(s).hostname.toLowerCase();
+      if (!h) return false;
+      if (h in AD_CACHE) return AD_CACHE[h];
+      var r = !!(FILTER && FILTER.isAdHost && FILTER.isAdHost(s));
+      AD_CACHE[h] = r;
+      return r;
     } catch (e) {}
     return false;
   }
@@ -449,7 +450,7 @@ const val SHIELDS_JS = """
   // ---------- 6b. late-added ads: ad-host frames/links/images and click-stealing overlays ----------
   // Looks only at nodes that were just added (never rescans the page), in small time-boxed batches.
   (function () {
-    if (!HOSTS) return;
+    if (!FILTER || !FILTER.isAdHost) return;
     var queue = [], scheduled = false, tokRuns = 0, tokTimer = 0;
     function hide(e) { try { e.style.setProperty('display', 'none', 'important'); } catch (x) {} }
     function checkEl(e) {
@@ -522,21 +523,14 @@ const val SHIELDS_JS = """
 
   // ---------- 7. fetch / XHR shim for known ad hosts ----------
   (function () {
-    var hosts = HOSTS;
-    if (!hosts) return;
+    if (!FILTER || !FILTER.isAdHost) return;
     var SAFE = /(^|\.)(cloudflare\.com|hcaptcha\.com|google\.com|gstatic\.com|jsdelivr\.net)${'$'}/;
     function isAdUrl(u) {
       try {
         var s = String(u);
         var host = new URL(s, location.href).hostname.toLowerCase();
         if (!host || SAFE.test(host) || sensitive()) return false;
-        var h = host;
-        while (h) {
-          if (hosts[h]) return true;
-          var dot = h.indexOf('.');
-          if (dot < 0) return false;
-          h = h.substring(dot + 1);
-        }
+        return adHostUrl(s);
       } catch (e) {}
       return false;
     }

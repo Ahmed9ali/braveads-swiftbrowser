@@ -1,6 +1,6 @@
 # Swift Browser
 
-A lightweight Android browser starter project with a Brave-inspired dark UI, Android System WebView, tabs, bookmarks, history, downloads, share, private mode, and a small built-in tracker blocklist.
+A lightweight Android browser starter project with a Brave-inspired dark UI, Android System WebView, tabs, bookmarks, history, downloads, share, private mode, and Brave's default ad/tracker filter lists.
 
 ## Requirements
 
@@ -65,9 +65,11 @@ The source project is intentionally small (no Chromium checkout, NDK, or bundled
 
 ## Tracker blocking notes
 
-`WebViewClient.shouldInterceptRequest()` is used to block known tracking hosts and common analytics endpoints. This is a lightweight application-level filter, not a Chromium network-stack modification. WebView interception has limitations: it is not a complete replacement for uBlock Origin or Brave Shields, and redirects / service workers / some browser-internal requests may not be covered. Keep the blocklist maintained and test sites before release.
+`WebViewClient.shouldInterceptRequest()` applies the same filter lists Brave Shields enables by default: the Brave Default Adblock Filters (uBlock Origin, EasyList, URLhaus and Brave's own lists), Brave Default Privacy Filters (EasyPrivacy + uBO Privacy), Brave First Party Adblock Filters, the Cookie Notice blocker and the Mobile app promo blocker. Brave's regional list for the device language is added from its filter list catalog.
 
-The included list is intentionally conservative to reduce breakage. No filter list is downloaded automatically. You can edit `app/src/main/assets/trackers.txt`.
+A snapshot of every default list is bundled in `app/src/main/assets/brave_filters` and seeded into app data on first launch, so blocking also works offline. Lists are refreshed daily from the same URLs Brave uses. `app/src/main/assets/trackers.txt` is the Brave-derived host list used by the popup/navigation guard.
+
+This is still an application-level filter, not a Chromium network-stack modification. WebView interception has limitations: it is not a complete replacement for Brave Shields, and scriptlets, redirect resources, CSP and some service-worker/browser-internal requests are not covered. The filter engine (`FilterEngine.kt`) skips syntax it cannot apply safely. Test sites before release.
 
 ## Important release work
 

@@ -5,16 +5,20 @@ import android.net.Uri
 import java.util.Locale
 
 class TrackerBlocker(context: Context) {
-    /** Filter-list engine (EasyList etc.), set by FilterListManager once lists are loaded. */
+    /** Brave filter-list engine, set by FilterListManager once lists are loaded. */
     @Volatile var engine: FilterEngine? = null
 
-    private val blockedHosts: Set<String> = context.assets.open("trackers.txt")
-        .bufferedReader()
-        .useLines { lines ->
-            lines.map { it.substringBefore("#").trim().lowercase(Locale.ROOT) }
-                .filter { it.isNotBlank() }
-                .toSet()
-        }
+    private val appContext = context.applicationContext
+    // The Brave host list is large; load it on first use rather than during UI composition.
+    private val blockedHosts: Set<String> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        appContext.assets.open("trackers.txt")
+            .bufferedReader()
+            .useLines { lines ->
+                lines.map { it.substringBefore("#").trim().lowercase(Locale.ROOT) }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+    }
 
     private val adPathParts = listOf(
         "/pagead/", "/adserver", "/adframe", "/adsbygoogle", "/ads/show", "/ads/serve", "/ad/serve",
@@ -60,16 +64,12 @@ class TrackerBlocker(context: Context) {
         }
     }
 
+    /** JS-side helper: the host lists live here, not in a large map shipped to every page. */
+    fun isAdUrl(url: String?): Boolean = isAdHost(hostOf(url))
+
     fun hasAdParams(url: String): Boolean {
         val lower = url.lowercase(Locale.ROOT)
         return redirectParts.any { lower.contains(it) }
-    }
-
-    fun blockedHostsJson(): String {
-        val obj = org.json.JSONObject()
-        blockedHosts.forEach { obj.put(it, true) }
-        hardcodedSpamHosts.forEach { obj.put(it, true) }
-        return obj.toString()
     }
 
     private fun sameSite(a: String, b: String) = a == b || a.endsWith(".$b") || b.endsWith(".$a")
@@ -186,25 +186,10 @@ class TrackerBlocker(context: Context) {
         return sensitiveWords.containsMatchIn(host.substringBefore('.') + "/") || sensitiveWords.containsMatchIn(rest.take(200))
     }
 
-    private val entities = listOf(
-        setOf("youtube.com", "ytimg.com", "ggpht.com", "googlevideo.com", "gstatic.com", "googleapis.com",
-            "google.com", "googleusercontent.com", "youtu.be", "youtube-nocookie.com"),
-        setOf("facebook.com", "fbcdn.net", "instagram.com", "cdninstagram.com", "fb.com"),
-        setOf("twitter.com", "x.com", "twimg.com"),
-        setOf("microsoft.com", "live.com", "msftauth.net", "bing.com", "office.com", "msn.com", "microsoftonline.com"),
-        setOf("amazon.com", "media-amazon.com", "ssl-images-amazon.com", "amazonaws.com", "cloudfront.net")
-    )
-
-    private fun sameOwner(a: String, b: String): Boolean {
-        val ra = NavigationGuard.registrable(a)
-        val rb = NavigationGuard.registrable(b)
-        if (ra == rb) return true
-        return entities.any { ra in it && rb in it }
-    }
-
     /**
-     * Sub-resource check against the downloaded filter lists. Deliberately conservative to protect real content:
-     * only third-party requests, never on exempt pages, and never on YouTube (handled by the YouTube rules above).
+     * Sub-resource check against the Brave filter lists. Brave protects first-party ad
+     * requests too (its First Party Adblock list), so don't skip same-site requests here.
+     * Payment, checkout and sign-in pages stay untouched so orders and logins keep working.
      */
     fun engineBlocks(url: String, pageUrl: String?, accept: String?): Boolean {
         val e = engine ?: return false
@@ -214,8 +199,6 @@ class TrackerBlocker(context: Context) {
         if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return false
         if (engineWhitelisted(host, url)) return false
         if (isSensitivePage(pageUrl)) return false
-        if (NavigationGuard.registrable(pageHost) == "youtube.com") return false
-        if (sameOwner(host, pageHost)) return false
         val t0 = System.nanoTime()
         val r = e.blocks(url, pageUrl, FilterEngine.inferType(url, accept, false))
         val ms = (System.nanoTime() - t0) / 1_000_000

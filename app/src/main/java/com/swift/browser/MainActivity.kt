@@ -1706,8 +1706,8 @@ private fun SwiftBrowserApp() {
 
             addJavascriptInterface(object {
                 @android.webkit.JavascriptInterface
-                fun getBlockedHosts(): String =
-                    try { blocker.blockedHostsJson() } catch (e: Exception) { "{}" }
+                fun isAdHost(url: String?): Boolean =
+                    try { blocker.isAdUrl(url) } catch (e: Exception) { false }
 
                 @android.webkit.JavascriptInterface
                 fun exempt(host: String?): Boolean = blocker.isExemptPage(host) || siteShields.isOff(host) ||

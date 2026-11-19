@@ -386,7 +386,9 @@ class FilterEngine private constructor(
                         typeBit(name) != 0 -> {
                             if (neg) notTypes = notTypes or typeBit(name) else { hasType = true; types = types or typeBit(name) }
                         }
-                        else -> return // redirect=, csp=, removeparam=, badfilter, denyallow=, to=, ... : skip rule
+                        // We cannot serve Brave's redirect resources from WebView, so block the request instead.
+                        name.startsWith("redirect=") || name == "empty" || name == "mp4" -> {}
+                        else -> return // csp=, removeparam=, badfilter, denyallow=, to=, ... : skip rule
                     }
                 }
             }

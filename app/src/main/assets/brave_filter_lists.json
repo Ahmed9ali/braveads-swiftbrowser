@@ -1,0 +1,212 @@
+[
+  {
+    "id": "default-0",
+    "group": "default",
+    "title": "uBlock Origin Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
+    "asset": "default_ubo_filters.txt"
+  },
+  {
+    "id": "default-1",
+    "group": "default",
+    "title": "uBlock Origin 2020 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2020.txt",
+    "asset": "default_ubo_filters_2020.txt"
+  },
+  {
+    "id": "default-2",
+    "group": "default",
+    "title": "uBlock Origin 2021 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2021.txt",
+    "asset": "default_ubo_filters_2021.txt"
+  },
+  {
+    "id": "default-3",
+    "group": "default",
+    "title": "uBlock Origin 2022 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2022.txt",
+    "asset": "default_ubo_filters_2022.txt"
+  },
+  {
+    "id": "default-4",
+    "group": "default",
+    "title": "uBlock Origin 2023 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2023.txt",
+    "asset": "default_ubo_filters_2023.txt"
+  },
+  {
+    "id": "default-5",
+    "group": "default",
+    "title": "uBlock Origin 2024 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2024.txt",
+    "asset": "default_ubo_filters_2024.txt"
+  },
+  {
+    "id": "default-6",
+    "group": "default",
+    "title": "uBlock Origin 2025 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2025.txt",
+    "asset": "default_ubo_filters_2025.txt"
+  },
+  {
+    "id": "default-7",
+    "group": "default",
+    "title": "uBlock Origin 2026 Filters",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2026.txt",
+    "asset": "default_ubo_filters_2026.txt"
+  },
+  {
+    "id": "default-8",
+    "group": "default",
+    "title": "uBlock Origin filters - General",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-general.txt",
+    "asset": "default_ubo_filters_general.txt"
+  },
+  {
+    "id": "default-9",
+    "group": "default",
+    "title": "uBlock Origin filters - Badware risks",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt",
+    "asset": "default_ubo_badware.txt"
+  },
+  {
+    "id": "default-10",
+    "group": "default",
+    "title": "uBlock Origin filters \u2013 Resource abuse",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt",
+    "asset": "default_ubo_resource_abuse.txt"
+  },
+  {
+    "id": "default-11",
+    "group": "default",
+    "title": "uBlock Origin filters - Unbreak",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt",
+    "asset": "default_ubo_unbreak.txt"
+  },
+  {
+    "id": "default-12",
+    "group": "default",
+    "title": "uBlock Origin filters - Quick Fixes",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt",
+    "asset": "default_ubo_quick_fixes.txt"
+  },
+  {
+    "id": "default-13",
+    "group": "default",
+    "title": "uBlock Origin filters - link shortners",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/ubo-link-shorteners.txt",
+    "asset": "default_ubo_link_shorteners.txt"
+  },
+  {
+    "id": "default-14",
+    "group": "default",
+    "title": "EasyList",
+    "url": "https://easylist.to/easylist/easylist.txt",
+    "asset": "default_easylist.txt"
+  },
+  {
+    "id": "default-15",
+    "group": "default",
+    "title": "URLhaus Malicious URL Blocklist",
+    "url": "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh-online.txt",
+    "asset": "default_urlhaus.txt"
+  },
+  {
+    "id": "default-16",
+    "group": "default",
+    "title": "Brave Unbreak",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-unbreak.txt",
+    "asset": "default_brave_unbreak.txt"
+  },
+  {
+    "id": "default-17",
+    "group": "default",
+    "title": "Brave Specific",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-specific.txt",
+    "asset": "default_brave_specific.txt"
+  },
+  {
+    "id": "default-18",
+    "group": "default",
+    "title": "Brave Social",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-social.txt",
+    "asset": "default_brave_social.txt"
+  },
+  {
+    "id": "default-19",
+    "group": "default",
+    "title": "Brave Unbreak",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-unbreak.txt",
+    "asset": "default_brave_unbreak_stub.txt"
+  },
+  {
+    "id": "default-20",
+    "group": "default",
+    "title": "Brave Android-Specific Rules",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-android-specific.txt",
+    "asset": "default_brave_android_specific.txt"
+  },
+  {
+    "id": "default-21",
+    "group": "default",
+    "title": "SugarCoat Rules",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-sugarcoat.txt",
+    "asset": "default_brave_sugarcoat.txt"
+  },
+  {
+    "id": "privacy-22",
+    "group": "privacy",
+    "title": "EasyPrivacy",
+    "url": "https://easylist.to/easylist/easyprivacy.txt",
+    "asset": "privacy_easyprivacy.txt"
+  },
+  {
+    "id": "privacy-23",
+    "group": "privacy",
+    "title": "uBlock Origin filters \u2013 Privacy",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
+    "asset": "privacy_ubo_privacy.txt"
+  },
+  {
+    "id": "firstparty-24",
+    "group": "firstparty",
+    "title": "Brave First-Party Specific Filters",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-firstparty.txt",
+    "asset": "firstparty_brave.txt"
+  },
+  {
+    "id": "firstparty-25",
+    "group": "firstparty",
+    "title": "Brave First-Party Regional Filters",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-firstparty-regional.txt",
+    "asset": "firstparty_brave_regional.txt"
+  },
+  {
+    "id": "cookie-26",
+    "group": "cookie",
+    "title": "EasyList-Cookie",
+    "url": "https://secure.fanboy.co.nz/fanboy-cookiemonster_ubo.txt",
+    "asset": "cookie_fanboy_cookiemonster.txt"
+  },
+  {
+    "id": "cookie-27",
+    "group": "cookie",
+    "title": "uBlock filters \u2013 Cookie Notices",
+    "url": "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-cookies.txt",
+    "asset": "cookie_ubo_cookie_notices.txt"
+  },
+  {
+    "id": "cookie-28",
+    "group": "cookie",
+    "title": "Brave-specific cookie additions",
+    "url": "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-cookie-specific.txt",
+    "asset": "cookie_brave_specific.txt"
+  },
+  {
+    "id": "mobile-29",
+    "group": "mobile",
+    "title": "",
+    "url": "https://secure.fanboy.co.nz/fanboy-mobile-notifications.txt",
+    "asset": "mobile_fanboy_notifications.txt"
+  }
+]
