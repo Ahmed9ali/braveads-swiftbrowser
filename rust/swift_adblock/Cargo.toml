@@ -1,0 +1,24 @@
+[package]
+name = "swift_adblock"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+
+[lib]
+name = "swift_adblock"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Same engine Brave ships (Brave's brave_shields uses adblock-rust 0.13.x).
+# "single-thread" is turned off so the engine is Send + Sync and can live
+# behind a global RwLock (WebView calls shouldInterceptRequest on many threads).
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+jni = "0.21"
+serde_json = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

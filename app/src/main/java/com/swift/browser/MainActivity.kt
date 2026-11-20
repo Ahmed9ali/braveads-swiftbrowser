@@ -697,6 +697,7 @@ private fun SwiftBrowserApp() {
     val uiScope = rememberCoroutineScope()
     val blocker = remember { TrackerBlocker(context) }
     remember { FilterListManager(context) { eng -> blocker.engine = eng }.also { it.start() } }
+    remember { com.swift.browser.adblock.AdBlockLists.init(context); 0 }
     val navGuard = remember {
         NavigationGuard({ System.currentTimeMillis() }, { h -> blocker.isAdHost(h) },
             { u, p -> blocker.hasAdParams(u) || blocker.engineBlocksNavigation(u, p) })
@@ -847,6 +848,17 @@ private fun SwiftBrowserApp() {
     val relaxedSites = remember { java.util.concurrent.ConcurrentHashMap.newKeySet<String>() }
     fun blockingFor(tabId: Long): Boolean = currentBlockingEnabled && !siteShields.isOff(firstParty[tabId])
     fun networkOn(tabId: Long): Boolean = blockingFor(tabId) && SiteShields.key(firstParty[tabId]) !in relaxedSites
+    // Native adblock engine (cosmetic filters + scriptlets): same on/off rules as the built-in shields.
+    remember {
+        com.swift.browser.adblock.AdBlocker.pageGate = { u ->
+            val h = NavigationGuard.host(u)
+            h != null && currentBlockingEnabled && !siteShields.isOff(u) &&
+                SiteShields.key(u) !in relaxedSites && !blocker.isExemptPage(h) &&
+                !blocker.isPaymentHost(h) && !blocker.isSensitivePage(u) &&
+                NavigationGuard.registrable(h) != "youtube.com"
+        }
+        0
+    }
     /** "Block scripts" is a per-site choice; JavaScript is switched before the page loads. */
     fun applyScriptPolicy(wv: WebView?, url: String?) {
         if (wv == null || url == null || !url.startsWith("http")) return
@@ -1697,6 +1709,7 @@ private fun SwiftBrowserApp() {
             ), "SwiftTranslator")
 
             addJavascriptInterface(BlobDownloads.Bridge(context.applicationContext), "SwiftBlob")
+            com.swift.browser.adblock.AdBlocker.install(this) { navGuard.markFlow(tabId) }
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, COMPAT_JS, setOf("*")) }
             if (shieldsAtStart) {
                 runCatching {
@@ -1706,8 +1719,8 @@ private fun SwiftBrowserApp() {
 
             addJavascriptInterface(object {
                 @android.webkit.JavascriptInterface
-                fun isAdHost(url: String?): Boolean =
-                    try { blocker.isAdUrl(url) } catch (e: Exception) { false }
+                fun getBlockedHosts(): String =
+                    try { blocker.blockedHostsJson() } catch (e: Exception) { "{}" }
 
                 @android.webkit.JavascriptInterface
                 fun exempt(host: String?): Boolean = blocker.isExemptPage(host) || siteShields.isOff(host) ||
@@ -1980,10 +1993,23 @@ private fun SwiftBrowserApp() {
                     // Main-frame navigations are judged by NavigationGuard (shouldOverrideUrlLoading), not here.
                     if (req.isForMainFrame) return null
 
-                    if (networkOn(tabId) && (blocker.shouldBlock(url, firstParty[tabId] ?: "", false) ||
-                            blocker.engineBlocks(url, firstParty[tabId], req.requestHeaders?.get("Accept")))) {
-                        countBlocked(tabId)
-                        return blockedResponse(url)
+                    if (networkOn(tabId)) {
+                        val page = firstParty[tabId]
+                        // Native engine (adblock-rust). "" = allow, "B" = block, "R..." = neutered stand-in resource.
+                        val verdict = blocker.nativeVerdict(req, page)
+                        if (verdict.startsWith("R")) {
+                            com.swift.browser.adblock.AdBlocker.redirectResponse(verdict)?.let {
+                                countBlocked(tabId)
+                                return it
+                            }
+                        }
+                        val block = blocker.shouldBlock(url, page ?: "", false) || verdict.isNotEmpty() ||
+                            (!blocker.nativeReady() &&
+                                blocker.engineBlocks(url, page, req.requestHeaders?.get("Accept")))
+                        if (block) {
+                            countBlocked(tabId)
+                            return blockedResponse(url)
+                        }
                     }
                     return null
                 }

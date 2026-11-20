@@ -1,0 +1,3 @@
+{ "name": "swift-adblock-js", "private": true, "type": "module",
+  "scripts": { "build": "node build_js.mjs" },
+  "devDependencies": { "esbuild": "^0.25.0" } }

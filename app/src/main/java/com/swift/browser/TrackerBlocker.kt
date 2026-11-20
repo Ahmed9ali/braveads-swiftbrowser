@@ -2,23 +2,22 @@ package com.swift.browser
 
 import android.content.Context
 import android.net.Uri
+import android.webkit.WebResourceRequest
+import com.swift.browser.adblock.AdBlockLists
+import com.swift.browser.adblock.AdBlocker
 import java.util.Locale
 
 class TrackerBlocker(context: Context) {
-    /** Brave filter-list engine, set by FilterListManager once lists are loaded. */
+    /** Filter-list engine (EasyList etc.), set by FilterListManager once lists are loaded. */
     @Volatile var engine: FilterEngine? = null
 
-    private val appContext = context.applicationContext
-    // The Brave host list is large; load it on first use rather than during UI composition.
-    private val blockedHosts: Set<String> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        appContext.assets.open("trackers.txt")
-            .bufferedReader()
-            .useLines { lines ->
-                lines.map { it.substringBefore("#").trim().lowercase(Locale.ROOT) }
-                    .filter { it.isNotBlank() }
-                    .toSet()
-            }
-    }
+    private val blockedHosts: Set<String> = context.assets.open("trackers.txt")
+        .bufferedReader()
+        .useLines { lines ->
+            lines.map { it.substringBefore("#").trim().lowercase(Locale.ROOT) }
+                .filter { it.isNotBlank() }
+                .toSet()
+        }
 
     private val adPathParts = listOf(
         "/pagead/", "/adserver", "/adframe", "/adsbygoogle", "/ads/show", "/ads/serve", "/ad/serve",
@@ -55,7 +54,6 @@ class TrackerBlocker(context: Context) {
 
     fun isAdHost(host: String?): Boolean {
         var h = host?.lowercase(Locale.ROOT) ?: return false
-        if (NavigationGuard.isShortener(h)) return false
         if (h in hardcodedSpamHosts) return true
         while (true) {
             if (h in blockedHosts) return true
@@ -65,38 +63,25 @@ class TrackerBlocker(context: Context) {
         }
     }
 
-    /** JS-side helper: the host lists live here, not in a large map shipped to every page. */
-    fun isAdUrl(url: String?): Boolean {
-        val u = url ?: return false
-        val h = hostOf(u)
-        return !isBotCheck(u, h) && isAdHost(h)
-    }
-
     fun hasAdParams(url: String): Boolean {
-        if (NavigationGuard.isShortener(hostOf(url))) return false
         val lower = url.lowercase(Locale.ROOT)
         return redirectParts.any { lower.contains(it) }
     }
 
-    private fun sameSite(a: String, b: String) = a == b || a.endsWith(".$b") || b.endsWith(".$a")
-
-    /** Captcha / bot-check URLs must never be touched, including first-party Cloudflare challenge assets. */
-    private fun isBotCheck(url: String, host: String?): Boolean {
-        val path = runCatching { Uri.parse(url).path?.lowercase(Locale.ROOT) ?: "" }.getOrDefault("")
-        if (path.contains("/cdn-cgi/challenge-platform") || path.contains("/turnstile/")) return true
-        val h = host?.lowercase(Locale.ROOT) ?: return false
-        if (h == "challenges.cloudflare.com" || h.endsWith(".challenges.cloudflare.com")) return true
-        if (h == "hcaptcha.com" || h.endsWith(".hcaptcha.com") || h == "recaptcha.net" || h.endsWith(".recaptcha.net")) return true
-        if ((h == "google.com" || h.endsWith(".google.com")) && path.contains("recaptcha")) return true
-        if ((h == "cloudflare.com" || h.endsWith(".cloudflare.com")) && path.contains("/cdn-cgi/")) return true
-        return false
+    fun blockedHostsJson(): String {
+        val obj = org.json.JSONObject()
+        blockedHosts.forEach { obj.put(it, true) }
+        hardcodedSpamHosts.forEach { obj.put(it, true) }
+        return obj.toString()
     }
+
+    private fun sameSite(a: String, b: String) = a == b || a.endsWith(".$b") || b.endsWith(".$a")
 
     fun isSpamRedirect(url: String, pageUrl: String?, hasGesture: Boolean): Boolean {
         if (hasGesture) return false // Let user-intended clicks through
         val host = hostOf(url) ?: return false
         val pageHost = hostOf(pageUrl) ?: return false
-        if (sameSite(host, pageHost) || NavigationGuard.isShortener(host)) return false
+        if (sameSite(host, pageHost)) return false
         
         // Block if it goes to a known spam host or has spam parameters
         if (isAdHost(host)) return true
@@ -110,8 +95,6 @@ class TrackerBlocker(context: Context) {
         if (isExemptPage(pageHost) || isExemptPage(requestHost)) return false
         if (isPaymentHost(requestHost) || isPaymentHost(pageHost) || isSensitivePage(pageUrl)) return false
         if (isCheckoutPage(pageUrl) && !isAdHost(requestHost)) return false
-        if (isBotCheck(requestUrl, requestHost) || isBotCheck(pageUrl ?: "", pageHost)) return false
-        if (NavigationGuard.isShortener(requestHost)) return false
 
         // 1. CRITICAL WHITELIST: Never block these or the web breaks.
         if (requestHost.endsWith("google.com") && requestUrl.contains("recaptcha")) return false
@@ -146,8 +129,7 @@ class TrackerBlocker(context: Context) {
     }
 
     private fun engineWhitelisted(host: String, url: String): Boolean =
-        isBotCheck(url, host) || NavigationGuard.isShortener(host) ||
-            (host.endsWith("google.com") && url.contains("recaptcha")) || host == "challenges.cloudflare.com" ||
+        (host.endsWith("google.com") && url.contains("recaptcha")) || host == "challenges.cloudflare.com" ||
             host.endsWith("hcaptcha.com") || host.endsWith("jsdelivr.net") || (host.endsWith("googleapis.com") && !host.startsWith("imasdk.")) ||
             host.endsWith("gstatic.com") || host.endsWith("ytimg.com") || host.endsWith("ggpht.com") ||
             host.endsWith("googleusercontent.com")
@@ -207,25 +189,65 @@ class TrackerBlocker(context: Context) {
         return sensitiveWords.containsMatchIn(host.substringBefore('.') + "/") || sensitiveWords.containsMatchIn(rest.take(200))
     }
 
+    private val entities = listOf(
+        setOf("youtube.com", "ytimg.com", "ggpht.com", "googlevideo.com", "gstatic.com", "googleapis.com",
+            "google.com", "googleusercontent.com", "youtu.be", "youtube-nocookie.com"),
+        setOf("facebook.com", "fbcdn.net", "instagram.com", "cdninstagram.com", "fb.com"),
+        setOf("twitter.com", "x.com", "twimg.com"),
+        setOf("microsoft.com", "live.com", "msftauth.net", "bing.com", "office.com", "msn.com", "microsoftonline.com"),
+        setOf("amazon.com", "media-amazon.com", "ssl-images-amazon.com", "amazonaws.com", "cloudfront.net")
+    )
+
+    private fun sameOwner(a: String, b: String): Boolean {
+        val ra = NavigationGuard.registrable(a)
+        val rb = NavigationGuard.registrable(b)
+        if (ra == rb) return true
+        return entities.any { ra in it && rb in it }
+    }
+
     /**
-     * Sub-resource check against the Brave filter lists. Brave protects first-party ad
-     * requests too (its First Party Adblock list), so don't skip same-site requests here.
-     * Payment, checkout and sign-in pages stay untouched so orders and logins keep working.
+     * Sub-resource check against the downloaded filter lists. Deliberately conservative to protect real content:
+     * only third-party requests, never on exempt pages, and never on YouTube (handled by the YouTube rules above).
      */
     fun engineBlocks(url: String, pageUrl: String?, accept: String?): Boolean {
         val e = engine ?: return false
         val host = hostOf(url) ?: return false
-        if (isBotCheck(url, host) || NavigationGuard.isShortener(host)) return false
         val pageHost = hostOf(pageUrl) ?: return false
         if (isExemptPage(pageHost) || isExemptPage(host)) return false
         if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return false
         if (engineWhitelisted(host, url)) return false
         if (isSensitivePage(pageUrl)) return false
+        if (NavigationGuard.registrable(pageHost) == "youtube.com") return false
+        if (sameOwner(host, pageHost)) return false
         val t0 = System.nanoTime()
         val r = e.blocks(url, pageUrl, FilterEngine.inferType(url, accept, false))
         val ms = (System.nanoTime() - t0) / 1_000_000
         if (ms >= 8) android.util.Log.w("SwiftFilters", "slow filter check ${ms} ms: ${url.take(120)}")
         return r
+    }
+
+    // ---- native engine (adblock-rust, the engine Brave uses) --------------------------------------------
+
+    /** True once the native engine has loaded its lists; until then the Kotlin FilterEngine above is used. */
+    fun nativeReady(): Boolean = AdBlockLists.ready
+
+    /**
+     * Verdict from the native engine for a sub-resource request, behind the SAME safety guards as engineBlocks()
+     * (speed tests, payment / checkout / sign-in pages, captcha hosts, YouTube, same-owner requests).
+     * "" = allow, "B" = block, "R<data: url>" = answer with that neutered resource.
+     */
+    fun nativeVerdict(req: WebResourceRequest, pageUrl: String?): String {
+        if (!AdBlockLists.ready) return ""
+        val url = req.url.toString()
+        val host = hostOf(url) ?: return ""
+        val pageHost = hostOf(pageUrl) ?: return ""
+        if (isExemptPage(pageHost) || isExemptPage(host)) return ""
+        if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return ""
+        if (engineWhitelisted(host, url)) return ""
+        if (isSensitivePage(pageUrl)) return ""
+        if (NavigationGuard.registrable(pageHost) == "youtube.com") return ""
+        if (sameOwner(host, pageHost)) return ""
+        return AdBlocker.verdict(req, pageUrl)
     }
 
     /** Navigation / popup destination check against popup rules and plain ad-host rules. */
@@ -237,20 +259,17 @@ class TrackerBlocker(context: Context) {
     }
 
     private fun cosmeticAllowed(host: String): Boolean =
-        engine != null && !isExemptPage(host) &&
+        engine != null && !AdBlockLists.ready && !isExemptPage(host) &&
             NavigationGuard.registrable(host.lowercase(Locale.ROOT)) != "youtube.com"
 
     private fun safeSelectors(list: List<String>): String =
-        list.filter {
-            val l = it.lowercase(Locale.ROOT)
-            !it.contains('{') && !it.contains('}') && !it.contains('\n') && it.length < 300 && balanced(it) &&
-                !l.contains("cf-challenge") && !l.contains("__cf_challenge") &&
-                !l.contains("cf-turnstile") && !l.contains("turnstile") &&
-                !l.contains("challenge-form") && !l.contains("challenge-stage") &&
-                !l.contains("challenge-running") && !l.contains("cf-browser-verification")
-        }.joinToString("\n")
+        list.filter { !it.contains('{') && !it.contains('}') && !it.contains('\n') && it.length < 300 && balanced(it) }
+            .joinToString("\n")
 
-    /** Site-specific rules + the few generic rules that cannot be indexed; sent once at document start. */
+    /**
+     * Site-specific rules + the few generic rules that cannot be indexed; sent once at document start.
+     * Empty once the native engine is ready: it applies cosmetic rules itself (see assets/adblock/cosmetic.js).
+     */
     fun cosmeticStartup(host: String): String {
         val e = engine ?: return ""
         if (!cosmeticAllowed(host)) return ""
