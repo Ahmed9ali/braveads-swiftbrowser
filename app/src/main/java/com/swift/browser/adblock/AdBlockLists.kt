@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
  * Start-up order (fast path first):
  *   1. engine.dat (serialized engine, only if the list selection is unchanged)  -> a few ms
  *   2. cached list files in filesDir                                            -> ~100 ms
- *   3. lists bundled in assets/adblock/*.txt (optional, first run offline)
+ *   3. lists bundled in assets/adblock (*.txt files, optional, first run offline)
  * Then anything older than [UPDATE_INTERVAL_MS] is re-downloaded in the background.
  */
 object AdBlockLists {
