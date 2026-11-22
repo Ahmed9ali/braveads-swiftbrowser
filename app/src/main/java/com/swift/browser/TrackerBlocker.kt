@@ -175,7 +175,7 @@ class TrackerBlocker(context: Context) {
 
     private val sensitiveWords = Regex(
         "(^|[/._?&=-])(checkout|payments?|pay|order|orders|cart|basket|billing|bank|netbanking|wallet|upi|login|signin|sign-in|" +
-            "auth|oauth|account|secure|3ds|otp|verify|transaction|invoice|subscribe)($|[/._?&=-])"
+            "3ds|otp|cvv|card|netbanking)($|[/._?&=-])"
     )
 
     /** Checkout, payment and sign-in pages: only cosmetic shields there, never request blocking. */
@@ -244,10 +244,25 @@ class TrackerBlocker(context: Context) {
         if (isExemptPage(pageHost) || isExemptPage(host)) return ""
         if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return ""
         if (engineWhitelisted(host, url)) return ""
-        if (isSensitivePage(pageUrl)) return ""
+        // Sensitive-looking URLs (verify, auth ...) are not exempt any more: only payment hosts and checkout pages are.
         if (NavigationGuard.registrable(pageHost) == "youtube.com") return ""
         if (sameOwner(host, pageHost)) return ""
         return AdBlocker.verdict(req, pageUrl)
+    }
+
+        /**
+     * Native engine verdict for a main-frame navigation or popup. Uses rule type "document": the engine
+     * has no "popup" request type, so $popup-only rules are not seen here (the Kotlin engine still checks them).
+     */
+    fun nativeNavBlocks(url: String, pageUrl: String?): Boolean {
+        if (!AdBlockLists.ready) return false
+        val host = hostOf(url) ?: return false
+        val pageHost = hostOf(pageUrl) ?: return false
+        if (engineWhitelisted(host, url) || isExemptPage(host) || isExemptPage(pageHost)) return false
+        if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return false
+        if (sameOwner(host, pageHost)) return false
+        val v = com.swift.browser.adblock.AdBlockNative.nativeCheck(url, pageUrl ?: "", "document", "GET")
+        return v.isNotEmpty() && (v[0] == 'B' || v[0] == 'R')
     }
 
     /** Navigation / popup destination check against popup rules and plain ad-host rules. */

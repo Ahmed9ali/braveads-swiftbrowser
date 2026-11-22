@@ -69,7 +69,7 @@ const val SHIELDS_JS = """
   var TOP = (window === window.top);
   var HOSTS = null;
   var EXEMPT = false;
-  var SENS = /(^|[\/._?&=-])(checkout|payments?|pay|order|orders|cart|basket|billing|bank|netbanking|wallet|upi|login|signin|sign-in|auth|oauth|account|secure|3ds|otp|verify|transaction|invoice|subscribe)(${'$'}|[\/._?&=-])/i;
+  var SENS = /(^|[\/._?&=-])(checkout|payments?|pay|order|orders|cart|basket|billing|bank|netbanking|upi|login|signin|sign-in|3ds|otp|cvv|card)(${'$'}|[\/._?&=-])/i;
   function sensitive() { try { return SENS.test(location.pathname + location.search) || SENS.test(location.hostname.split('.')[0] + '/'); } catch (e) { return false; } }
   try { EXEMPT = !!(window.SwiftFilter && window.SwiftFilter.exempt && window.SwiftFilter.exempt(H)); } catch (e) {}
   // Checkout / payment pages: no page-side blocking at all (orders must not fail because of a blocked script).
@@ -159,6 +159,8 @@ const val SHIELDS_JS = """
     // Only empty div/a/span layers or ad-host iframes can be click-catchers. Never images/media: lazy-loaded
     // thumbnails are also absolute-positioned and fully transparent until they fade in.
     var tn = el.tagName;
+    if (tn === 'A') { if (!adHostUrl(el.href)) return false; }
+    else if (el.closest && el.closest('a[href],button,[role=button],label,input,select,textarea')) return false;
     if (tn === 'IFRAME') { if (!adHostUrl(el.src)) return false; }
     else if (tn !== 'DIV' && tn !== 'A' && tn !== 'SPAN') return false;
     else if (el.childElementCount > 0) return false;
@@ -195,7 +197,7 @@ const val SHIELDS_JS = """
   try {
     var realOpen = window.open;
     window.open = function () {
-      if (Date.now() - lastTrusted > 1500) return stubWindow();
+      // Popup decisions are native (onCreateWindow + NavigationGuard), which see the real user gesture.
       return realOpen.apply(window, arguments);
     };
   } catch (e) {}
@@ -821,21 +823,23 @@ const val SHIELDS_JS = """
     // ---- buttons that the countdown would unlock ----
     var WANT = /^(get\s*(the\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|download(\s+now)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
     var HIDEOK = /^(get\s*(the\s+)?(download\s+)?link|continue|next|download|proceed|go\s+to\s+link|open\s+link)/i;
-    function reveal() {
+    function reveal(gate) {
       try {
         var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button]');
         for (var i = 0; i < els.length && i < 400; i++) {
           var e = els[i], txt = ((e.innerText || e.value || '') + '').trim();
           if (!txt || txt.length > 40 || !WANT.test(txt)) continue;
-          if (e.disabled) e.disabled = false;
-          e.removeAttribute('disabled');
-          if (e.classList) e.classList.remove('disabled');
-          if (e.getAttribute('aria-disabled') === 'true') e.setAttribute('aria-disabled', 'false');
+                    if (gate) {
+            if (e.disabled) e.disabled = false;
+            e.removeAttribute('disabled');
+            if (e.classList) e.classList.remove('disabled');
+            if (e.getAttribute('aria-disabled') === 'true') e.setAttribute('aria-disabled', 'false');
+          }
           if (HIDEOK.test(txt)) {
             var n = e, k = 0;
             while (n && n !== document.body && k++ < 4) {
               var cs = getComputedStyle(n);
-              if (cs.display === 'none') n.style.setProperty('display', n.tagName === 'A' || n.tagName === 'BUTTON' ? 'inline-block' : 'block', 'important');
+              if (cs.display === 'none' && (gate || /(^|[\s_-])(ad|ads|advert|banner|sponsor)([\s_-]|$)/i.test(String(n.className || '') + ' ' + (n.id || '')))) n.style.setProperty('display', n.tagName === 'A' || n.tagName === 'BUTTON' ? 'inline-block' : 'block', 'important');
               if (n.hidden) n.hidden = false;
               n = n.parentElement;
             }
@@ -858,7 +862,8 @@ const val SHIELDS_JS = """
     }
     [300, 900, 2500, 6000, 12000, 25000].forEach(function (ms) { rST.call(window, look, ms); });
     try { document.addEventListener('DOMContentLoaded', function () { rST.call(window, look, 50); }); } catch (e) {}
-    rSI.call(window, function () { if (gated && Date.now() < revealUntil) reveal(); }, 600);
+    var rvN = 0;
+  rSI.call(window, function () { var g = gated && Date.now() < revealUntil; if (g || (++rvN % 4 === 0)) reveal(g); }, 1000);
   })();
   maskAll();
 })();

@@ -1,0 +1,5 @@
+Applied 20 edits to 4 files:
+  app/src/main/java/com/swift/browser/MainActivity.kt
+  app/src/main/java/com/swift/browser/NavigationGuard.kt
+  app/src/main/java/com/swift/browser/ShieldsJs.kt
+  app/src/main/java/com/swift/browser/TrackerBlocker.kt

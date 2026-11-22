@@ -14,7 +14,8 @@ import java.util.Locale
 class NavigationGuard(
     private val now: () -> Long,
     private val isAdHost: (String) -> Boolean,
-    private val hasAdParams: (String, String?) -> Boolean
+    private val hasAdParams: (String, String?) -> Boolean,
+    private val engineReady: () -> Boolean = { false }
 ) {
     enum class Kind { ALLOW, BLOCK }
     data class Verdict(val kind: Kind, val reason: String) {
@@ -87,6 +88,12 @@ class NavigationGuard(
      * [pageUrl] is the currently committed page of that tab.
      */
     @Synchronized fun decideNavigation(tabId: Long, url: String, pageUrl: String?, isRedirect: Boolean): Verdict {
+        val v = decideNavigationInner(tabId, url, pageUrl, isRedirect)
+        ShieldLog.log("nav", tabId, url, v.allowed, v.reason)
+        return v
+    }
+
+    @Synchronized private fun decideNavigationInner(tabId: Long, url: String, pageUrl: String?, isRedirect: Boolean): Verdict {
         val t = tab(tabId)
         val h = host(url) ?: return Verdict(Kind.ALLOW, "no host")
         val t0 = now()
@@ -103,6 +110,8 @@ class NavigationGuard(
 
         val hostAd = isAdHost(h)
         val adLike = hostAd || hasAdParams(url, pageUrl)
+        // Ad hosts are refused before any tap rule: a tap on an ad must not open it.
+        if (adLike) { t.tainted = true; return Verdict(Kind.BLOCK, "ad destination (before tap rules)") }
         if (t0 < t.flowUntil) {
             if (t0 - t.tapAt in 0..FLOW_TAP_MS) {
                 t.chainAllowedByTap = true; t.tainted = false
@@ -154,7 +163,8 @@ class NavigationGuard(
             return if (isVisited(h) || !suspicious(h)) Verdict(Kind.ALLOW, "auto redirect, host looks ordinary")
             else Verdict(Kind.BLOCK, "automatic redirect right after load")
         }
-        // Long after load, no tap: scripted navigation (timer / ad script).
+                // Long after load, no tap: scripted navigation (timer / ad script). Shortener steps live here.
+        if (engineReady()) return Verdict(Kind.ALLOW, "scripted after load, engine decides ad hosts")
         return if (isVisited(h) || !suspicious(h)) Verdict(Kind.ALLOW, "scripted, host looks ordinary")
         else Verdict(Kind.BLOCK, "scripted navigation without a tap")
     }
@@ -164,11 +174,18 @@ class NavigationGuard(
      * and the caller must re-check with the first URL.
      */
     @Synchronized fun decidePopup(tabId: Long, url: String?, pageUrl: String?, hasGesture: Boolean): Verdict {
+        val v = decidePopupInner(tabId, url, pageUrl, hasGesture)
+        ShieldLog.log("popup", tabId, url ?: "", v.allowed, v.reason)
+        return v
+    }
+
+    @Synchronized private fun decidePopupInner(tabId: Long, url: String?, pageUrl: String?, hasGesture: Boolean): Verdict {
         val t = tab(tabId)
         val t0 = now()
         val inFlow = t0 < t.flowUntil
+        val recentControl = t.tapControl && t0 - t.tapAt in 0..CONTROL_WINDOW_MS
         val tapFresh = t0 - t.tapAt in 0..(if (inFlow) FLOW_TAP_MS else TAP_WINDOW_MS)
-        if (!hasGesture && !tapFresh) return Verdict(Kind.BLOCK, "popup without a tap")
+        if (!hasGesture && !tapFresh && !recentControl) return Verdict(Kind.BLOCK, "popup without a tap")
         if (url == null || url.isBlank() || url == "about:blank") {
             return Verdict(Kind.ALLOW, "popup pending url")
         }
@@ -177,16 +194,24 @@ class NavigationGuard(
         if (isTrusted(h)) return Verdict(Kind.ALLOW, "trusted host")
         val pageHost = pageUrl?.let { host(it) }
         if (pageHost != null && sameSite(h, pageHost)) return Verdict(Kind.ALLOW, "same site popup")
+        // Ad check comes before every tap rule: a tap on an ad must not open it.
+        if (isAdHost(h) || hasAdParams(url, pageUrl)) return Verdict(Kind.BLOCK, "ad popup")
+        if (inFlow) {
+            // Shortlink pages: only a labelled button may open another site. A plain link or image is an ad.
+            return if (recentControl) Verdict(Kind.ALLOW, "shortlink button opened a window")
+            else Verdict(Kind.BLOCK, "popup from a link on a shortlink page")
+        }
+        if (recentControl) return Verdict(Kind.ALLOW, "popup after tapping a control")
         if (t.tapHref != null && tapFresh && sameDestination(t.tapHref!!, url)) {
             return Verdict(Kind.ALLOW, "popup from tapped link")
         }
-        if (inFlow && tapFresh) return Verdict(Kind.ALLOW, "shortlink task opened by a tap")
-        if (isAdHost(h) || hasAdParams(url, pageUrl)) return Verdict(Kind.BLOCK, "ad popup")
-        // A real link was tapped (e.g. a search result opening in a new tab) and the target is not ad-like.
-        if (tapFresh && t.tapHref != null) return Verdict(Kind.ALLOW, "popup from tapped link, not ad-like")
+        if (hasGesture) return Verdict(Kind.ALLOW, "popup with a user gesture")
         if (isVisited(h)) return Verdict(Kind.ALLOW, "popup to visited site")
         return Verdict(Kind.BLOCK, "popup to unknown site")
     }
+
+    /** True while a shortlink flow is active in this tab. The host app keeps allowed steps in the same tab. */
+    @Synchronized fun isFlow(tabId: Long): Boolean = now() < tab(tabId).flowUntil
 
     // ---- helpers ---------------------------------------------------------------------------
 

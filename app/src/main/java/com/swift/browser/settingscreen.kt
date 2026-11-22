@@ -470,6 +470,7 @@ private fun PrivacyPage(
     onClearData: () -> Unit,
     onBack: () -> Unit
 ) {
+        val shieldCtx = androidx.compose.ui.platform.LocalContext.current
     PageScaffold("Privacy and security", onBack) {
         CardGroup {
             item { SRow(Icons.Default.Shield, "Privacy dashboard", "Trackers blocked and protection status", onClick = onOpenPrivacyDashboard) { Chevron() } }
@@ -485,7 +486,8 @@ private fun PrivacyPage(
                     SSwitch(settings.safeBrowsing) { settings.putSafeBrowsing(it); onWebSettingsChanged() }
                 }
             }
-            item { SRow(Icons.Default.DeleteSweep, "Clear browsing data", "Cookies, site data, cache", onClick = onClearData) { Chevron() } }
+                        item { SRow(Icons.Default.DeleteSweep, "Clear browsing data", "Cookies, site data, cache", onClick = onClearData) { Chevron() } }
+            item { SRow(Icons.Default.Info, "Share shield log", "Blocking decisions from this session, to test or report a site", onClick = { ShieldLog.share(shieldCtx) }) { Chevron() } }
         }
     }
 }

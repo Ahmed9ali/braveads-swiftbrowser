@@ -1,44 +1,21 @@
-# Swift Browser: native ad blocking (adblock-rust + Brave lists) — drop-in files
+# Chain fix: ads blocked before tap rules, shortlink steps stay in one tab, phone-side shield log
 
-Unzip into the ROOT of your repo (keeps the same folder layout), then:
+1. Copy these two files over yours (they include the flow patch):
+   - app/src/main/java/com/swift/browser/NavigationGuard.kt
+   - app/src/main/java/com/swift/browser/ShieldLog.kt  (new)
+2. From the repo root run:  python3 tools/apply_chain_patch.py
+   It adds the "Share shield log" row to Settings -> Privacy and security, and keeps allowed
+   shortlink steps in the same tab. It prints "Already applied" if run twice.
+3. Commit, let GitHub build, install the APK on the phone.
 
-1. `python3 tools/apply_main_activity_patch.py`  — 4 small edits to MainActivity.kt (backup: .bak)
-2. Commit and push. `.github/workflows/build.yml` now builds `libswift_adblock.so` (Rust) before Gradle.
+Reading the log on the phone:
+Reproduce the chain (link.vipshort.in -> ... -> devuploads.com), then Settings -> Privacy and security ->
+"Share shield log", and send it to yourself (Gmail, Notes). Each line shows ALLOW/BLOCK and the reason.
+Look for: "ad destination", "ad popup", "popup from a link on a shortlink page", "shortlink button opened a window".
 
-What's inside
-- `app/src/main/java/com/swift/browser/TrackerBlocker.kt`  — YOUR file, complete, with the native engine added
-  behind the same safety guards (speed tests, payment/checkout/sign-in pages, captcha hosts, YouTube).
-- `app/src/main/java/com/swift/browser/adblock/*.kt`        — engine bridge, list manager, cosmetic + scriptlet bridge
-- `app/src/main/assets/adblock/`                            — cosmetic.js (Brave's cosmetic filter scripts),
-                                                              resources.json (225 uBO + Brave scriptlets/redirects),
-                                                              list_catalog.json (Brave's list catalog)
-- `rust/swift_adblock/`                                     — the JNI library (adblock 0.13, same engine as Brave)
-- `.github/workflows/build.yml`                             — your workflow + Rust/NDK steps
-- `js/`, `tools/`                                           — sources to regenerate cosmetic.js / resources.json
-
-Behaviour
-- If the .so is missing or fails to load, the app silently keeps your existing shields.
-- Your Kotlin FilterEngine/FilterListManager still run until the native engine is ready; after that the native
-  engine does network + cosmetic + scriptlets. Once you are happy, delete the `FilterListManager(...)` line in
-  MainActivity.kt to free its memory.
-- Shortener pages: the uBlock "link shorteners" list (timer boosters, focus spoofers, popup blockers) now runs for
-  real, and a page that gets such rules calls `navGuard.markFlow(tabId)` so your guard lets the multi-step flow through.
-- If you ever turn on `isMinifyEnabled` for release, add to proguard-rules.pro:
-  `-keep class com.swift.browser.adblock.AdBlockNative { *; }`
-  `-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }`
-
-## Flow fix (shortlink stalls, dead buttons, UPI/app links)
-Apply AFTER the adblock integration patch:
-```
-python3 tools/apply_flow_patch.py          # 20 anchored edits; writes nothing if any anchor fails
-```
-Changes: no time-based window.open stub in page JS; native popup decision uses the real user gesture
-and a recent tap on a labelled control (8 s); scripted timer navigations are decided by the native
-ad-host engine instead of TLD/hyphen guesses; the native engine is the only network authority once
-ready; sign-in/"verify" URLs no longer disable request blocking; real links and buttons are never
-treated as click-catchers; disabled buttons are re-enabled only on shortener pages; UPI / intent /
-market links open in their apps.
-
-Debug: `adb logcat -s SwiftShield` shows one line per navigation, popup and network block with the reason.
-Unit tests on the JVM: NavigationGuard now calls ShieldLog (android.util.Log). Set
-`ShieldLog.enabled = false` in tests or enable `isReturnDefaultValues = true` in testOptions.
+What changed:
+- Ad hosts are refused BEFORE any tap rule (before, a tap on an ad let it through).
+- Popups: ad check first; on shortlink pages only a labelled button may open a window; other
+  pop-ups to unknown sites follow the old rules.
+- Allowed popups on shortlink pages load in the same tab instead of a new tab.
+- New: NavigationGuard.isFlow(tabId).

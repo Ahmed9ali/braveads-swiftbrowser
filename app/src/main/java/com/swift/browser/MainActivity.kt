@@ -700,7 +700,8 @@ private fun SwiftBrowserApp() {
     remember { com.swift.browser.adblock.AdBlockLists.init(context); 0 }
     val navGuard = remember {
         NavigationGuard({ System.currentTimeMillis() }, { h -> blocker.isAdHost(h) },
-            { u, p -> blocker.hasAdParams(u) || blocker.engineBlocksNavigation(u, p) })
+            { u, p -> blocker.nativeNavBlocks(u, p) || blocker.engineBlocksNavigation(u, p) },
+            { blocker.nativeReady() })
     }
     // Last thing the guard stopped: (tabId, url, wasPopup). Shown as an "Allow" chip.
     var blockedNav by remember { mutableStateOf<Triple<Long, String, Boolean>?>(null) }
@@ -1827,14 +1828,14 @@ private fun SwiftBrowserApp() {
                         if (decided) return decidedAllowed
                         if (url.isNullOrBlank() || url.startsWith("about:")) return true
                         decided = true
-                        val v = if (blockingFor(tabId)) navGuard.decidePopup(tabId, url, sourceUrl, true) else null
+                        val v = if (blockingFor(tabId)) navGuard.decidePopup(tabId, url, sourceUrl, isUserGesture) else null
                         decidedAllowed = v == null || v.allowed
                         val openerHost = sourceUrl?.let { NavigationGuard.host(it) }
                         val targetHost = NavigationGuard.host(url)
                         val sameSiteOpen = !isDialog && openerHost != null && targetHost != null &&
                             NavigationGuard.sameSite(openerHost, targetHost)
                         Handler(Looper.getMainLooper()).post {
-                            if (decidedAllowed && sameSiteOpen && view != null) {
+                            if (decidedAllowed && (sameSiteOpen || (!isDialog && navGuard.isFlow(tabId))) && view != null) {
                                 // Same-site "new window" (checkout confirmations etc.): stay in this tab so
                                 // the flow and the back/forward history stay in one place.
                                 child.stopLoading()
@@ -1961,7 +1962,7 @@ private fun SwiftBrowserApp() {
                             return true
                         }
                     }
-                    return uri.scheme !in listOf("http", "https")
+                    return handleExternalScheme(context, view, uri)
                 }
 
                 override fun onReceivedSslError(
@@ -2003,9 +2004,10 @@ private fun SwiftBrowserApp() {
                                 return it
                             }
                         }
-                        val block = blocker.shouldBlock(url, page ?: "", false) || verdict.isNotEmpty() ||
-                            (!blocker.nativeReady() &&
-                                blocker.engineBlocks(url, page, req.requestHeaders?.get("Accept")))
+                        val block = if (blocker.nativeReady()) verdict.isNotEmpty()
+                            else blocker.shouldBlock(url, page ?: "", false) ||
+                                blocker.engineBlocks(url, page, req.requestHeaders?.get("Accept"))
+                        if (block) ShieldLog.log("net", tabId, url, false, verdict.ifEmpty { "heuristic" })
                         if (block) {
                             countBlocked(tabId)
                             return blockedResponse(url)
