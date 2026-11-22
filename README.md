@@ -26,3 +26,19 @@ Behaviour
 - If you ever turn on `isMinifyEnabled` for release, add to proguard-rules.pro:
   `-keep class com.swift.browser.adblock.AdBlockNative { *; }`
   `-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }`
+
+## Flow fix (shortlink stalls, dead buttons, UPI/app links)
+Apply AFTER the adblock integration patch:
+```
+python3 tools/apply_flow_patch.py          # 20 anchored edits; writes nothing if any anchor fails
+```
+Changes: no time-based window.open stub in page JS; native popup decision uses the real user gesture
+and a recent tap on a labelled control (8 s); scripted timer navigations are decided by the native
+ad-host engine instead of TLD/hyphen guesses; the native engine is the only network authority once
+ready; sign-in/"verify" URLs no longer disable request blocking; real links and buttons are never
+treated as click-catchers; disabled buttons are re-enabled only on shortener pages; UPI / intent /
+market links open in their apps.
+
+Debug: `adb logcat -s SwiftShield` shows one line per navigation, popup and network block with the reason.
+Unit tests on the JVM: NavigationGuard now calls ShieldLog (android.util.Log). Set
+`ShieldLog.enabled = false` in tests or enable `isReturnDefaultValues = true` in testOptions.

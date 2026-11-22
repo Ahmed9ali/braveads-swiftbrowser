@@ -216,7 +216,7 @@ object AdBlocker {
                 // Pages the shortener list has rules for (timer boosters, focus spoofers): tell the host app so
                 // its navigation guard lets the multi-step flow through.
                 if (onShortlinkPage != null && SHORTLINK_RULE.containsMatchIn(json.optString("scriptlet"))) {
-                    runCatching { onShortlinkPage?.invoke() }
+                    runCatching { onShortlinkPage.invoke() }
                 }
                 json.toString()
             }.getOrDefault(DISABLED)

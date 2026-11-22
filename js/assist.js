@@ -51,5 +51,12 @@ function runAssist(SPEED) {
     postMessage: function () {}, location: { href: 'about:blank', replace: function () {} },
     document: { write: function () {}, writeln: function () {}, close: function () {}, open: function () {} }
   };
-  window.open = function () { return stub; };
+  var realOpenFn = window.open;
+  var lastTap = 0;
+  document.addEventListener('pointerdown', function (e) { if (e.isTrusted) lastTap = realDateNow(); }, true);
+  window.open = function () {
+    // Only a recent real tap may open a window; scripted pop-ups get the closed stub.
+    if (realDateNow() - lastTap < 8000) return realOpenFn.apply(window, arguments);
+    return stub;
+  };
 }
