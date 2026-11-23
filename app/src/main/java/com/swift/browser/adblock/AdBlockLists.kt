@@ -48,6 +48,8 @@ object AdBlockLists {
     @Volatile var ready: Boolean = false
         private set
 
+    @Volatile private var resourcesLoaded = false
+
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var dir: File
     private lateinit var appContext: Context
@@ -81,6 +83,16 @@ object AdBlockLists {
         } catch (t: Throwable) {
             Log.e(TAG, "update failed", t)
         }
+    }
+
+    /** One line for the shield log: is the native engine really running, and with how many lists? */
+    fun statusLine(): String {
+        if (!AdBlockNative.available) return "native engine: NOT LOADED (libswift_adblock.so missing), built-in shields only"
+        if (!::dir.isInitialized) return "native engine: loaded, not started"
+        val sources = runCatching { selectedSources() }.getOrDefault(emptyList())
+        val have = sources.count { fileFor(it).exists() }
+        val cacheKb = if (engineFile.exists()) engineFile.length() / 1024 else 0
+        return "native engine: ready=$ready lists=$have/${sources.size} resources=$resourcesLoaded engineCache=${cacheKb}KB"
     }
 
     // ------------------------------------------------------------------ selection
@@ -169,7 +181,8 @@ object AdBlockLists {
                 appContext.assets.open("adblock/resources.json").bufferedReader().use { it.readText() }
             }.getOrNull()
         } ?: return
-        if (!AdBlockNative.nativeLoadResources(json)) Log.w(TAG, "resources.json rejected")
+        resourcesLoaded = AdBlockNative.nativeLoadResources(json)
+        if (!resourcesLoaded) Log.w(TAG, "resources.json rejected")
     }
 
     private fun writeEngineCache(sources: List<ListSource>) {

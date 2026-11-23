@@ -11,6 +11,8 @@ const val SHIELDS_JS = """
     if (/(^|\.)(challenges\.cloudflare\.com|hcaptcha\.com|recaptcha\.net|turnstile\.com)${'$'}/.test(HN) ||
         (HN === 'www.google.com' && location.pathname.indexOf('/recaptcha') === 0)) return;
   } catch (e) {}
+  // Exempt pages (Shields down, speed tests, an unsolved Cloudflare challenge): no page patches at all.
+  try { if (window.SwiftFilter && window.SwiftFilter.exempt && window.SwiftFilter.exempt((location.hostname || '').toLowerCase())) return; } catch (e) {}
   if (window.__swiftShields) return;
   window.__swiftShields = true;
   // Our patches must not be visible to bot checks (Cloudflare, Turnstile ...): every function we replace keeps the
@@ -870,7 +872,7 @@ const val SHIELDS_JS = """
 """
 
 /** Prefix for document-start scripts that must not run inside captcha / bot-check frames. */
-const val CAPTCHA_GUARD = "if(/(^|\\.)(challenges\\.cloudflare\\.com|hcaptcha\\.com|recaptcha\\.net)$/.test(location.hostname)||(location.hostname==='www.google.com'&&location.pathname.indexOf('/recaptcha')===0))return;"
+const val CAPTCHA_GUARD = "if(/(^|\\.)(challenges\\.cloudflare\\.com|hcaptcha\\.com|recaptcha\\.net)$/.test(location.hostname)||(location.hostname==='www.google.com'&&location.pathname.indexOf('/recaptcha')===0)||(window.SwiftFilter&&window.SwiftFilter.exempt&&window.SwiftFilter.exempt((location.hostname||'').toLowerCase())))return;"
 
 /** Makes the WebView look like Chrome to bot checks: a real Chrome has window.chrome, a WebView does not. */
 const val COMPAT_JS = """

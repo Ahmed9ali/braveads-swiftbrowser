@@ -726,6 +726,7 @@ private fun SwiftBrowserApp() {
     var tabSection by remember { mutableIntStateOf(0) }
     var showShield by remember { mutableStateOf(false) }
     val siteShields = remember { SiteShields(context) }
+    val challengeSites = remember { ChallengeSites(context) }
     var showTabs by remember { mutableStateOf(false) }
     var showSuggestions by remember { mutableStateOf(false) }
     var addressFocused by remember { mutableStateOf(false) }
@@ -855,7 +856,7 @@ private fun SwiftBrowserApp() {
             val h = NavigationGuard.host(u)
             h != null && currentBlockingEnabled && !siteShields.isOff(u) &&
                 SiteShields.key(u) !in relaxedSites && !blocker.isExemptPage(h) &&
-                !blocker.isPaymentHost(h) && !blocker.isSensitivePage(u) &&
+                !blocker.isPaymentHost(h) && !blocker.isSensitivePage(u) && !challengeSites.expects(h) &&
                 NavigationGuard.registrable(h) != "youtube.com"
         }
         0
@@ -1710,7 +1711,10 @@ private fun SwiftBrowserApp() {
             ), "SwiftTranslator")
 
             addJavascriptInterface(BlobDownloads.Bridge(context.applicationContext), "SwiftBlob")
-            com.swift.browser.adblock.AdBlocker.install(this) { navGuard.markFlow(tabId) }
+            com.swift.browser.adblock.AdBlocker.install(this) {
+                ShieldLog.log("flow", tabId, firstParty[tabId] ?: "", true, "shortlink rules matched")
+                navGuard.markFlow(tabId)
+            }
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, COMPAT_JS, setOf("*")) }
             if (shieldsAtStart) {
                 runCatching {
@@ -1724,8 +1728,7 @@ private fun SwiftBrowserApp() {
                     try { blocker.blockedHostsJson() } catch (e: Exception) { "{}" }
 
                 @android.webkit.JavascriptInterface
-                fun exempt(host: String?): Boolean = blocker.isExemptPage(host) || siteShields.isOff(host) ||
-                    SiteShields.key(host) in relaxedSites
+                fun exempt(host: String?): Boolean = blocker.isExemptPage(host) || siteShields.isOff(host) || SiteShields.key(host) in relaxedSites || challengeSites.expects(host)
 
                 @android.webkit.JavascriptInterface
                 fun cosmeticStartup(host: String?): String =
@@ -1746,7 +1749,10 @@ private fun SwiftBrowserApp() {
                 fun scrollState(innerNotAtTop: Boolean) { innerScroll[tabId] = innerNotAtTop }
 
                 @android.webkit.JavascriptInterface
-                fun flow() { navGuard.markFlow(tabId) }
+                fun flow() {
+                    ShieldLog.log("flow", tabId, firstParty[tabId] ?: "", true, "shortlink page text matched")
+                    navGuard.markFlow(tabId)
+                }
             }, "SwiftNav")
 
             appSettings.applyTo(this)
@@ -1928,6 +1934,9 @@ private fun SwiftBrowserApp() {
                 override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
                     if (msg != null) {
                         android.util.Log.d("SwiftWeb", "[${msg.messageLevel()}] ${msg.message()} (${msg.sourceId()}:${msg.lineNumber()})")
+                        if (msg.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) {
+                            ShieldLog.log("js", tabId, "${msg.message()} @ ${msg.sourceId()}:${msg.lineNumber()}", false, "console error")
+                        }
                     }
                     return false
                 }
@@ -2004,7 +2013,7 @@ private fun SwiftBrowserApp() {
                                 return it
                             }
                         }
-                        val block = if (blocker.nativeReady()) verdict.isNotEmpty()
+                        val block = if (blocker.nativeReady()) (verdict.isNotEmpty() || blocker.hostListBlocks(url, page))
                             else blocker.shouldBlock(url, page ?: "", false) ||
                                 blocker.engineBlocks(url, page, req.requestHeaders?.get("Accept"))
                         if (block) ShieldLog.log("net", tabId, url, false, verdict.ifEmpty { "heuristic" })
@@ -2129,6 +2138,22 @@ private fun SwiftBrowserApp() {
                         refreshNavigation()
                     }
                     if (!currentPrivateMode && tabs.firstOrNull { it.id == tabId }?.isPrivate != true) store.addHistory(title, url)
+                    if (url.startsWith("http") && blockingFor(tabId)) {
+                        val cfView = view
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            if (cfView != null && webViews[tabId] === cfView && cfView.url == url) {
+                                cfView.evaluateJavascript(CF_PROBE_JS) { r ->
+                                    if (r == "true") {
+                                        val k = SiteShields.key(url)
+                                        val first = k.isNotEmpty() && challengeSites.learn(k)
+                                        ShieldLog.log("cf", tabId, url, true,
+                                            if (first) "Cloudflare challenge seen: reloading without page patches" else "challenge still showing")
+                                        if (first) cfView.reload()
+                                    }
+                                }
+                            }
+                        }, 2500)
+                    }
                     Handler(Looper.getMainLooper()).postDelayed({ captureThumb(tabId) }, 700)
                     if (tabId == activeId && url.startsWith("http")) offerTranslateIfNeeded(view, tabId, url)
                     if (url.startsWith("http") && blockingFor(tabId)) {
@@ -2651,7 +2676,7 @@ private fun SwiftBrowserApp() {
                             update = { layout ->
                                 layout.visibility = if (isCurrent) android.view.View.VISIBLE else android.view.View.INVISIBLE
                                 webViews[tab.id]?.let { wv ->
-                                    if (isCurrent) wv.onResume() else wv.onPause()
+                                    if (isCurrent) wv.onResume() else if (!navGuard.isFlow(tab.id)) wv.onPause()
                                 }
                             }
                         )

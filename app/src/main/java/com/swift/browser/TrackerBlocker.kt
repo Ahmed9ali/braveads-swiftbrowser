@@ -265,6 +265,21 @@ class TrackerBlocker(context: Context) {
         return v.isNotEmpty() && (v[0] == 'B' || v[0] == 'R')
     }
 
+    /**
+     * Exact-host tracker list (trackers.txt). Structured, not substring guessing, so it stays on top of the
+     * native engine. Same safety guards as the engine checks.
+     */
+    fun hostListBlocks(url: String, pageUrl: String?): Boolean {
+        val host = hostOf(url) ?: return false
+        val pageHost = hostOf(pageUrl) ?: return false
+        if (!isAdHost(host)) return false
+        if (isExemptPage(pageHost) || isExemptPage(host)) return false
+        if (isPaymentHost(host) || isPaymentHost(pageHost) || isCheckoutPage(pageUrl)) return false
+        if (engineWhitelisted(host, url)) return false
+        if (NavigationGuard.registrable(pageHost) == "youtube.com") return false
+        return !sameOwner(host, pageHost)
+    }
+
     /** Navigation / popup destination check against popup rules and plain ad-host rules. */
     fun engineBlocksNavigation(url: String, pageUrl: String?): Boolean {
         val e = engine ?: return false
