@@ -440,6 +440,19 @@ private val NEUTRAL_GIF = byteArrayOf(
  * What a blocked request gets back. Scripts and images are answered with an empty 200 (like uBlock's "noop" resources)
  * so pages that probe "did my ad script load?" do not conclude an ad blocker is running; everything else fails.
  */
+private const val AD_LIB_STUB = """(function(w){try{
+var noop=function(){return this;};
+var slot={addService:noop,setTargeting:noop,setCollapseEmptyDiv:noop,defineSizeMapping:noop,setClickUrl:noop,set:noop,get:function(){return null;},getSlotElementId:function(){return '';},updateTargetingFromMap:noop};
+var ps={enableSingleRequest:noop,enableLazyLoad:noop,collapseEmptyDivs:noop,disableInitialLoad:noop,refresh:noop,setTargeting:noop,addEventListener:noop,removeEventListener:noop,setPrivacySettings:noop,set:noop,get:function(){return null;},clear:noop,enableServices:noop,getSlots:function(){return [];}};
+var g=w.googletag=w.googletag||{};
+g.cmd=g.cmd||[];g.apiReady=true;g.pubadsReady=true;
+g.defineSlot=function(){return slot;};g.defineOutOfPageSlot=function(){return slot;};g.display=noop;g.destroySlots=function(){return true;};
+g.pubads=function(){return ps;};g.companionAds=function(){return ps;};g.enableServices=noop;g.sizeMapping=function(){return {addSize:noop,build:function(){return [];}};};
+g.cmd.push=function(f){try{typeof f==='function'&&f();}catch(e){}return 1;};
+var q=g.cmd.splice?g.cmd.slice():[];q.forEach(function(f){try{typeof f==='function'&&f();}catch(e){}});
+w.adsbygoogle=w.adsbygoogle||[];if(!w.adsbygoogle.loaded){w.adsbygoogle.loaded=true;w.adsbygoogle.push=function(){return 1;};}
+}catch(e){}})(window);"""
+
 private fun blockedResponse(url: String): WebResourceResponse {
     val path = url.substringBefore('#').substringBefore('?').lowercase()
     val cors = mapOf(
@@ -447,11 +460,16 @@ private fun blockedResponse(url: String): WebResourceResponse {
         "Access-Control-Allow-Origin" to "*"
     )
     when {
-        path.endsWith(".js") || path.endsWith(".mjs") ->
+        path.endsWith(".js") || path.endsWith(".mjs") -> {
+            // Ad libraries that pages call into: answer with a harmless stand-in so the page's own scripts do not crash.
+            val stub = if (path.endsWith("/gpt.js") || path.contains("pubads") || path.contains("adsbygoogle") ||
+                path.contains("/show_ads") || path.contains("/ima3"))
+                AD_LIB_STUB else "/* blocked by Swift Shields */"
             return WebResourceResponse(
                 "application/javascript", "utf-8", 200, "OK", cors,
-                java.io.ByteArrayInputStream("/* blocked by Swift Shields */".toByteArray())
+                java.io.ByteArrayInputStream(stub.toByteArray())
             )
+        }
         path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".gif") ||
             path.endsWith(".webp") || path.endsWith(".ico") || path.endsWith(".svg") ->
             return WebResourceResponse("image/gif", null, 200, "OK", cors, java.io.ByteArrayInputStream(NEUTRAL_GIF))

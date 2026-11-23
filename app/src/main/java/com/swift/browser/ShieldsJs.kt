@@ -11,8 +11,6 @@ const val SHIELDS_JS = """
     if (/(^|\.)(challenges\.cloudflare\.com|hcaptcha\.com|recaptcha\.net|turnstile\.com)${'$'}/.test(HN) ||
         (HN === 'www.google.com' && location.pathname.indexOf('/recaptcha') === 0)) return;
   } catch (e) {}
-  // Exempt pages (Shields down, speed tests, an unsolved Cloudflare challenge): no page patches at all.
-  try { if (window.SwiftFilter && window.SwiftFilter.exempt && window.SwiftFilter.exempt((location.hostname || '').toLowerCase())) return; } catch (e) {}
   if (window.__swiftShields) return;
   window.__swiftShields = true;
   // Our patches must not be visible to bot checks (Cloudflare, Turnstile ...): every function we replace keeps the
@@ -71,7 +69,7 @@ const val SHIELDS_JS = """
   var TOP = (window === window.top);
   var HOSTS = null;
   var EXEMPT = false;
-  var SENS = /(^|[\/._?&=-])(checkout|payments?|pay|order|orders|cart|basket|billing|bank|netbanking|upi|login|signin|sign-in|3ds|otp|cvv|card)(${'$'}|[\/._?&=-])/i;
+  var SENS = /(^|[\/._?&=-])(checkout|payments?|pay|order|orders|cart|basket|billing|bank|netbanking|wallet|upi|login|signin|sign-in|auth|oauth|account|secure|3ds|otp|verify|transaction|invoice|subscribe)(${'$'}|[\/._?&=-])/i;
   function sensitive() { try { return SENS.test(location.pathname + location.search) || SENS.test(location.hostname.split('.')[0] + '/'); } catch (e) { return false; } }
   try { EXEMPT = !!(window.SwiftFilter && window.SwiftFilter.exempt && window.SwiftFilter.exempt(H)); } catch (e) {}
   // Checkout / payment pages: no page-side blocking at all (orders must not fail because of a blocked script).
@@ -161,8 +159,6 @@ const val SHIELDS_JS = """
     // Only empty div/a/span layers or ad-host iframes can be click-catchers. Never images/media: lazy-loaded
     // thumbnails are also absolute-positioned and fully transparent until they fade in.
     var tn = el.tagName;
-    if (tn === 'A') { if (!adHostUrl(el.href)) return false; }
-    else if (el.closest && el.closest('a[href],button,[role=button],label,input,select,textarea')) return false;
     if (tn === 'IFRAME') { if (!adHostUrl(el.src)) return false; }
     else if (tn !== 'DIV' && tn !== 'A' && tn !== 'SPAN') return false;
     else if (el.childElementCount > 0) return false;
@@ -199,7 +195,7 @@ const val SHIELDS_JS = """
   try {
     var realOpen = window.open;
     window.open = function () {
-      // Popup decisions are native (onCreateWindow + NavigationGuard), which see the real user gesture.
+      if (Date.now() - lastTrusted > 1500) return stubWindow();
       return realOpen.apply(window, arguments);
     };
   } catch (e) {}
@@ -475,7 +471,7 @@ const val SHIELDS_JS = """
       var adFrame = false;
       for (var i = 0; i < frames.length; i++) { if (frames[i].src && adHostUrl(frames[i].src)) adFrame = true; }
       if (!(STRONG.test(txt) || adFrame)) return;
-      try { n.remove(); } catch (x) { hide(n); }
+      hide(n);
       try {
         var b = document.body, d = document.documentElement;
         if (b && b.style.overflow === 'hidden') b.style.removeProperty('overflow');
@@ -720,7 +716,7 @@ const val SHIELDS_JS = """
         var top = found;
         while (top.parentElement && top.parentElement !== document.body && top.parentElement !== document.documentElement &&
                coversScreen(top.parentElement) && wallText(top.parentElement).length < 1600) top = top.parentElement;
-        try { top.remove(); } catch (x) { top.style.setProperty('display', 'none', 'important'); }
+        top.style.setProperty('display', 'none', 'important');
         removedAny = true;
         // leftover dimming layers: empty, screen-sized, fixed
         var again = document.elementsFromPoint(innerWidth / 2, innerHeight / 2);
@@ -728,7 +724,7 @@ const val SHIELDS_JS = """
           var b = again[k];
           if (b !== document.body && b !== document.documentElement && coversScreen(b) &&
               (b.innerText || '').trim().length < 5 && !b.querySelector('img,video,canvas,input,iframe')) {
-            try { b.remove(); } catch (x) { b.style.setProperty('display', 'none', 'important'); }
+            b.style.setProperty('display', 'none', 'important');
           }
         }
         unlock();
@@ -825,23 +821,45 @@ const val SHIELDS_JS = """
     // ---- buttons that the countdown would unlock ----
     var WANT = /^(get\s*(the\s+)?(download\s+)?link|continue(\s+to\s+(link|download|website))?|next(\s+step|\s+page)?|download(\s+now)?|proceed|click\s+here(\s+to\s+continue)?|go\s+to\s+link|open\s+link|unlock\s+link|skip\s+ad|create\s+link)\b/i;
     var HIDEOK = /^(get\s*(the\s+)?(download\s+)?link|continue|next|download|proceed|go\s+to\s+link|open\s+link)/i;
-    function reveal(gate) {
+    var GREYCLS = /(^|[\s_-])(disabled|disable|locked|inactive|wait(ing)?|loading|countdown|timer|not-?ready)([\s_-]|$)/i;
+    var COUNTDOWN = /(\b(please\s+)?wait\b[^.]{0,40}\d+\s*(s\b|sec)|\b\d+\s*(s|sec|secs|seconds)\b[^.]{0,30}\b(left|remaining|please|wait|to\s+continue)|please\s+wait|seconds?\s+(left|remaining)|verifying|checking\s+your\s+browser|activity\s+verified|human\s+verification|scroll\s+(down\s+)?to\s+(continue|proceed|get)|click\s+(on\s+)?(any|an|the|one)\s+(of\s+the\s+)?(images?|ads?|banners?))/i;
+    // Is this a button the page keeps locked (disabled, greyed, click-through off, wait-style classes)?
+    function looksLocked(e) {
       try {
-        var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button]');
-        for (var i = 0; i < els.length && i < 400; i++) {
+        if (e.disabled || e.getAttribute('aria-disabled') === 'true') return true;
+        if (GREYCLS.test((e.className && e.className.baseVal === undefined ? e.className : '') + '')) return true;
+        var cs = getComputedStyle(e);
+        if (cs.pointerEvents === 'none' || cs.cursor === 'not-allowed' || parseFloat(cs.opacity) < 0.75) return true;
+      } catch (x) {}
+      return false;
+    }
+    function unlock1(e) {
+      try {
+        if (e.disabled) e.disabled = false;
+        e.removeAttribute('disabled');
+        if (e.getAttribute('aria-disabled') === 'true') e.setAttribute('aria-disabled', 'false');
+        if (e.classList) { for (var c = e.classList.length - 1; c >= 0; c--) { if (GREYCLS.test(e.classList[c])) e.classList.remove(e.classList[c]); } }
+        var cs = getComputedStyle(e);
+        if (cs.pointerEvents === 'none') e.style.setProperty('pointer-events', 'auto', 'important');
+        if (parseFloat(cs.opacity) < 0.75) e.style.setProperty('opacity', '1', 'important');
+        if (cs.cursor === 'not-allowed') e.style.setProperty('cursor', 'pointer', 'important');
+      } catch (x) {}
+    }
+    var lockedSeen = 0;
+    function reveal() {
+      try {
+        var els = document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],div[class*=btn],span[class*=btn]');
+        lockedSeen = 0;
+        for (var i = 0; i < els.length && i < 500; i++) {
           var e = els[i], txt = ((e.innerText || e.value || '') + '').trim();
           if (!txt || txt.length > 40 || !WANT.test(txt)) continue;
-                    if (gate) {
-            if (e.disabled) e.disabled = false;
-            e.removeAttribute('disabled');
-            if (e.classList) e.classList.remove('disabled');
-            if (e.getAttribute('aria-disabled') === 'true') e.setAttribute('aria-disabled', 'false');
-          }
+          if (looksLocked(e)) lockedSeen++;
+          unlock1(e);
           if (HIDEOK.test(txt)) {
             var n = e, k = 0;
             while (n && n !== document.body && k++ < 4) {
-              var cs = getComputedStyle(n);
-              if (cs.display === 'none' && (gate || /(^|[\s_-])(ad|ads|advert|banner|sponsor)([\s_-]|$)/i.test(String(n.className || '') + ' ' + (n.id || '')))) n.style.setProperty('display', n.tagName === 'A' || n.tagName === 'BUTTON' ? 'inline-block' : 'block', 'important');
+              var cs2 = getComputedStyle(n);
+              if (cs2.display === 'none') n.style.setProperty('display', n.tagName === 'A' || n.tagName === 'BUTTON' ? 'inline-block' : 'block', 'important');
               if (n.hidden) n.hidden = false;
               n = n.parentElement;
             }
@@ -849,30 +867,55 @@ const val SHIELDS_JS = """
         }
       } catch (e) {}
     }
+    // Works on ANY domain: a locked "Continue / Next / Get link" button, or wait/verify wording next to such a
+    // button, marks the page as a gate. Short-link sites change domains every week, so no domain list is needed.
+    function gateSignals() {
+      try {
+        var b = document.body;
+        if (!b) return false;
+        var els = b.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button],div[class*=btn],span[class*=btn]');
+        var locked = false, want = false;
+        for (var i = 0; i < els.length && i < 500; i++) {
+          var e = els[i], txt = ((e.innerText || e.value || '') + '').trim();
+          if (!txt || txt.length > 40 || !WANT.test(txt)) continue;
+          want = true;
+          if (looksLocked(e)) { locked = true; break; }
+        }
+        if (locked) return true;
+        var t = (b.innerText || '').slice(0, 6000);
+        return want && COUNTDOWN.test(t);
+      } catch (e) { return false; }
+    }
 
     var sent = 0, gated = false, revealUntil = 0;
     function look() {
-      if (sent > 12) return;
+      if (document.visibilityState === 'hidden' && !gated) return;
       try {
         var b = document.body;
         if (!b) return;
-        var t = (b.innerText || '').slice(0, 4000);
+        var t = (b.innerText || '').slice(0, 6000);
         var short = SHORTENERS.test(H);
-        if (FLOW.test(t) || short) { sent++; if (NAV && NAV.flow) NAV.flow(); }
-        if (!gated && (STRONGFLOW.test(t) || short)) { gated = true; speedUp(); revealUntil = Date.now() + 90000 * SPEED; }
+        if (sent <= 12 && (FLOW.test(t) || short)) { sent++; if (NAV && NAV.flow) NAV.flow(); }
+        if (!gated && (STRONGFLOW.test(t) || short || gateSignals())) {
+          gated = true;
+          if (NAV && NAV.flow) NAV.flow();
+          speedUp();
+          revealUntil = Date.now() + 120000 * SPEED;
+        }
       } catch (e) {}
     }
-    [300, 900, 2500, 6000, 12000, 25000].forEach(function (ms) { rST.call(window, look, ms); });
+    [300, 900, 2500, 6000, 12000, 25000, 40000, 60000, 90000, 120000].forEach(function (ms) { rST.call(window, look, ms); });
     try { document.addEventListener('DOMContentLoaded', function () { rST.call(window, look, 50); }); } catch (e) {}
-    var rvN = 0;
-  rSI.call(window, function () { var g = gated && Date.now() < revealUntil; if (g || (++rvN % 4 === 0)) reveal(g); }, 1000);
+    var lookTicks = 0;
+    rSI.call(window, function () { if (!gated && lookTicks++ < 40) look(); }, 3000);
+    rSI.call(window, function () { if (gated && Date.now() < revealUntil) reveal(); }, 600);
   })();
   maskAll();
 })();
 """
 
 /** Prefix for document-start scripts that must not run inside captcha / bot-check frames. */
-const val CAPTCHA_GUARD = "if(/(^|\\.)(challenges\\.cloudflare\\.com|hcaptcha\\.com|recaptcha\\.net)$/.test(location.hostname)||(location.hostname==='www.google.com'&&location.pathname.indexOf('/recaptcha')===0)||(window.SwiftFilter&&window.SwiftFilter.exempt&&window.SwiftFilter.exempt((location.hostname||'').toLowerCase())))return;"
+const val CAPTCHA_GUARD = "if(/(^|\\.)(challenges\\.cloudflare\\.com|hcaptcha\\.com|recaptcha\\.net)$/.test(location.hostname)||(location.hostname==='www.google.com'&&location.pathname.indexOf('/recaptcha')===0))return;"
 
 /** Makes the WebView look like Chrome to bot checks: a real Chrome has window.chrome, a WebView does not. */
 const val COMPAT_JS = """
